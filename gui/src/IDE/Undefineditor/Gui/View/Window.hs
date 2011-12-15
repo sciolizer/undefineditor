@@ -8,6 +8,7 @@ module IDE.Undefineditor.Gui.View.Window where
 import Control.Monad
 import Control.Monad.IO.Class (MonadIO(), liftIO)
 import Data.Maybe
+import qualified Data.Set as S
 import Graphics.UI.Gtk {- (
   FileChooserAction(FileChooserActionOpen),
   Notebook(),
@@ -72,7 +73,7 @@ main = do
     -- Just xml <- xmlNew "hellogtk2hs.glade"
     -- notebook <- builderGetObject xml castToNotebook "notebook" :: IO Notebook
     rvars <- newRVars
-    kb <- getKeybindings
+    kb <- newKeybindings
     openFiles <- newOpenFiles rvars
     (windowEditor, menuBar, notebook) <- mkWindow
     tabs <- newTabs rvars openFiles notebook -- todo: we should really be able to get the rvars from the openFiles object
@@ -95,7 +96,7 @@ main = do
     -- windowEditor <- builderGetObject xml castToWindow "windowEditor"
     -- menuBar <- builderGetObject xml castToMenuBar "menubar"
     let acts = actions windowEditor rvars openFiles tabs
-    runMenuBuilder acts menuBar menuTemplate
+    runMenuBuilder acts menuBar kb menuTemplate
     {-
     vbox <- builderGetObject xml castToVBox "vbox2"
     editorMenu <- newEditorMenu
@@ -107,7 +108,7 @@ main = do
     on windowEditor keyPressEvent $ do
       mods <- eventModifier
       kv <- eventKeyVal
-      mbAct <- liftIO $ getActivation kb mods kv
+      mbAct <- liftIO $ getActivation kb (S.fromList mods, kv)
       case mbAct of
         Nothing -> do
           liftIO $ putStrLn $ "ignoring " ++ show mods ++ "+" ++ keyName kv

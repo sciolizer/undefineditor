@@ -23,3 +23,4 @@ data Activation =
   | AFindUsages
   | ASelectCurrentIdentifier
   | AFindOccurences
+  deriving (Bounded, Enum, Eq, Ord, Read, Show)
