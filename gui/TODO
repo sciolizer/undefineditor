@@ -1,0 +1,146 @@
+Ctrl+F for find
+File > Close
+File > Quit doesn't do anything
+Abandon the "application context" strategy... go for dependency injection (application context strategy is more like service locator pattern)
+File->Open should be intelligent about the folder that it displays first... I'll have to think on this for a while, first, though.
+Need a scrollbar for the tabs... also, the tabs are expanding to the width of the entire file path... I would suggest displaying only the filename, and adding path information when there is ambiguity... still need a scrollbar or something, though.
+App crashes whenever an image is loaded... GetContents: invalid argument (invalid byte sequence)
+
+multiple windows
+
+Showing the abbreviated names of files.
+
+keyboard shortcuts
+
+scrollbar on the tabs
+
+A really well working Open feature would be nice...
+Here is what I want.
+  - Automatic inclusion of the project folder for ANY hs or lhs or cabal file that is opened. (can working on exclusion feature later)
+  - Automatic inclusion of everything reported by ghc-pkg
+  - Automatic inclusion of everything in .cabal/packages (including hidden versions of packages)
+  - Opening up hi files when the hs/lhs file is not available.
+  - When the src is not available, a "download sources" button
+  - Jumping to a file that is already open will just take you to that tab.
+
+saving files
+
+thoughts on maybe NOT using a popup window to open a file...
+  open up a new tab, which instead of containing a textview, contains
+  a textbox with dropdown... start typing the name of your module, and
+  when the user selects an option, replace the textbox and dropdown with
+  an actual editor like the others.
+  If the user switches away from the tab, and clicks file open again, just
+  return focus to the existing file searcher tab
+  Leaving the search tab, opening up a new file, and coming back to the search
+  tab should cause the search results to be updated, at least if the newly
+  opened file is part of a new project. Likewise, closing all other tabs should
+  render the search tab useless, aside from a message to the user that they
+  must have at least one file open (strictly speaking this will not be true
+    once I add support for inclusion and exclusion lists, so I probably
+    shouldn't even bother implementing the user message)
+  File > Open should always work even if it's not going to display anything
+  useful. In all cases, whether creating a new search tab or switching to
+  the current one, the contents of the search box should be re-highlighted.
+  Pressing escape from within the search tab should close that tab
+    (and ideally return the user back to their previously active tab)
+But in the meantime, we can restrict ourselves to only searching for modules in the path of currently open files. This means that if you close all tabs, then the open module feature will not work (since the current project folder will be unknown)
+
+
+
+Do a google search for "haskell editor" and "haskell ide"... go to all of the resultant wiki pages and add this one to the list.
+
+New name: Hedont. Haskell EDitor ON Temazepam. Also short for hedonist.
+
+
+
+mm, more thinking...
+when do I create and cancel the file watchers? and where do I keep them?
+
+If I keep them in the model, then I have a bit of a problem, because the FocusedSet data structure holds values, not references (and you should make sure that you only have one reference at a time)
+
+I could change the FileWatcher service to track uniqueness of files... but then I have to think about layering of ... blah... FileWatcher service should not need a singleton - if you create multiple watchers for the same file, you should have to cancel each of them individually, think of it as attaching handlers to signals - you can attach and remove multiple handles to and from a file.
+
+so... the duplication elimination should be done outside of the file watcher service... two options: on modification to the model, and on modification to the view. Doing it on the view side is tricky, because where do I keep the watchers (without re-inventing notebook attachments)
+
+
+
+ok, I think this is the plan...
+
+there's a set of open files...
+and there's a set of open tabs
+tabs to files is a many to one relationship
+
+there's a file model in which you can get and release files... a reference counting system ensures that watches (which are encapsulated) are cancelled when the count goes to zero...
+
+on top of that, there's a model which contains a focused set of (filename, textbuffer) pairs. Since the text buffers are created by the file model (which tracks reference counts), multiple tabs of the same file will share the same text buffer, and so will be updated at the same time. Saving and reloading knows nothing about tabs... that's all done in the background of the ui... the tabs model is responsible for making sure that tab titles are short but unambiguous.
+
+
+status bar to tell me line number and column number
+
+accelerator keys! firstly for saving and for switching tabs
+
+unispaced font
+
+automatic indentation
+
+Ctrl+F
+
+shorter names in the tabs
+
+make tabs scrollable
+
+
+
+cleanly has the wrong signature, it shouldn't be WriteM () -> IO (), it should be IO () -> IO ().
+writeRVar should have type RVar a -> a -> IO ().
+writeRVar should raise an exception (terminate the program!) if the thread is not in the middle of a cleanly.
+If cleanly detects that it is being reinvoked on the same thread, it should allow it.
+If writes occur while the cleanly is in the propogation phase, then the propogation phase will
+  need to be restarted when it is finished. (log every propogation phase, so it is obvious
+  when there are circular propogations)
+  Must make sure that writes from different propogation phases do not collide with each other...
+    thus, the clearing away of old "todo"s should be done BEFORE the view updating starts.
+starting place: find all uses of cleanly and move them into the event handlers
+
+
+tab names:
+  first of all, one react for every tab creation...
+    this will make sure we don't have to worry about the tab collection's view being out of sync with the model
+  you read:
+    whether the file is clean or dirty
+    and a list of all files in the tab collection view
+      Keep adding folders to the beginning until the file is no longer a common suffix of all of the files
+
+
+
+Possibly better name: hhhhhhh. To make fun of the haskell tradition of naming things with h's. Alternatively, dugong, to make fun of the manatee project. Also halicore.
+
+keyFromName returns 0 when the name is invalid.
+
+Hovering over a Tab should give you the full path of the file.
+After all, I want it to be the case that when you open up the file
+for keybindings, the users can figure out where the file is, so that
+they can modify it themselves if they want.
+
+If you want to do chrome/manatee style one-process per tab, then Socket and Plug are the modules you probably want to look at.
+
+When editing the keybindings file, Ctrl+Enter will highlight the current key value (with modifiers). When the key value is highlighted (whether you got there manually or by pressing Ctrl+Enter), the next keypress which includes a modifier will replace the highlighted text. pressing a key that has no modifier will result in the normal behavior of that keypress.
+
+OpenFiles::openFile should allow you to specify a validation function which is called before saving. In the case of the keybindings file, the file will not be saved unless the file is validated.
+
+To get past my "writer's block" on the Find feature... create a module which handles the find functionality for a text buffer. Then the only thing I will have to do in the Window file is wire things up. Also, limit self to one find bar per text buffer instead of having a global find bar. This will simplify things.
+
+Think of, and come up with a solution to, the problem of hiding the find bar BEFORE writing any code. Likely there will have to be some model changes... these should be worked out before writing any code. As Jason says, the real work is in thinking... the rest if just typing.
+
+Ctrl+G should be the keybinding for Find next, NOT Ctrl+F... because we want to be able to press Ctrl+G while the textviewer has focus, without always being sent to the find bar. Also, the first Ctrl+G should take you to the first result, not the second. Maybe. ESC could also be used to take you to the first result, I suppose.
+
+
+Split into multiple parts:
+  lib
+  gui
+  bin
+
+The beautiful thing about this, though, is that you don't need to make multiple source folders. Cabal will let you create two libraries and one executable.
+
+should be a keyboard shortcut for "include this function in the export list"

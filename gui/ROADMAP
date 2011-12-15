@@ -1,0 +1,8 @@
+Implement fast go to definition library function
+Implemnet fast AND ROBUST go to definition library function
+Test go to definition on hackage source code
+Combine go to definition library with the editor
+  - along with downloading source from the internet?
+Enable "always saved and loaded" functionality with the editor
+Implement find all references
+Automatic module importing

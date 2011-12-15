@@ -1,0 +1,40 @@
+Look at cursor:
+  If cursor is on any part of an import line EXCEPT the part in parenthesis
+    Jump to that file (see below)
+  Otherwise, produce an status message indicating
+    that the line is not an import line (if it is not)
+    or that jumping to parenthetical parts of an import is not yet implemented
+
+Jumping to a file:
+  If import line specifies a package name:
+    ASSUME package name imports would not be used for intra-project imports (todo: check to see if this is even possible)
+    Look at package in .cabal/packages and ghc installation location.
+      If there are multiple versions, attempt to use the cabal file to resolve the ambiguity
+      If ambiguity remains (either because 1. cabal file does not exist or 2. cabal file is not specific enough or 3. multiple instances of the package exist even for the same version (e.g. because user has used more than just hackage.haskell.org as their package manager)), then provide user with a dialog box allowing them to pick which version of the module they want to jump to... dialog box must include both the repository (hackage.haskell.org) and the version number for EACH option.
+      Open up the file readonly.
+      todo: use known .cabal files as an additional source of ambiguity - so user can decide whether to jump to the installed version or the working version
+      UNDER NO CIRCUMSTANCES should you assume you know what the user wants... sometimes they are running the version compiled against
+      todo: be ambiguous about which ghc version you are using as well (this might just boil down to base)
+  otherwise:
+    try to find the module in the current project:
+      if current file has a known module name:
+        use that to determine relative path to other module
+        fall thru to next case if that doesn't work though (module name as typed in might be incorrect)
+      if .cabal file exists in parent folder:
+        use that to determine relative path to other module
+        fall thru to next case if that doesn't work
+      fall-thru to next case
+    try to find the module in another project:
+      let list of projects be built from:
+        the ghc api (searching for the module name)
+        .cabal/packages
+        all other known .cabal files
+      if any ambiguity occurs (version, repo, whatever), prompt the user in order to resolve the ambiguity
+
+"all other known .cabal" is a todo for now.
+At first attempt, we can stick it in the user's configuration.
+But really it should be a part of a workspace.
+  Unlike eclipse, we do NOT want to prompt the user for a workspace. We just
+  work with the default workspace unless they explicitly tell us otherwise.
+
+If source code is not found, then display contents of .hi file, and put a "download sources" button at the top.

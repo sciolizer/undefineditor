@@ -1,0 +1,10 @@
+- changing a file in the editor causes the file to be saved
+- changing a file in the file system causes the editor be changed
+- deleting a file in the file system causes the tab to be closed
+- contents of file in separate windows stay synced
+- changes are saved when a tab or window is closed
+  - saving should be done globally... saving files individually
+    is just weird
+  - although there is a 3-second delay to saving when you are
+    modifying the buffer, there should be no delay when you close
+    the last tab of a file

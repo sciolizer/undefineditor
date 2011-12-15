@@ -1,0 +1,5 @@
+cd lib
+cabal install
+cd ../gui
+cabal install
+$HOME/.cabal/bin/undefineditor

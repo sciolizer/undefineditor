@@ -1,0 +1,46 @@
+Undefineditor is an editor for haskell source code. The primary goal of undefineditor is to make navigation of haskell source code as efficient as possible.
+
+Commands like "go to definition" and "find all usages" should be as fast as possible. They should also be robust against incomplete code - i.e. they should work as much as possible even when the code contains parse and/or type errors.
+
+Jumping to functions within a module should be fast... both by name and by iteration.
+
+A user should be able to jump to a function definition even when she has forgotten to import it.
+
+Jumping between the source code of different projects should be seamless - present the user with types when the source code of a depedency is not present (gathered from the .hi file) and the option to download source code (cabal fetch).
+
+Other goals of the editor include:
+
+- Being fast. Startup is fast. (No splash screen with a "loading" progress bar.) Background activities should not make the editor feel sluggish. No command should freeze up the gui thread.
+
+- Being robust. The editor should be able to tell you the types and kinds of various expressions even when the file contains (unrelated) type errors.
+
+- Having zero configuration. There are no .project files or .workspace files. As much as possible, dependency information and run configuration is inferred from the cabal infrastructure and tools like ghc-pkg. The editor should make its best guess when no .cabal file is present. When commands are truly ambiguous, a list of all reasonable interpretations are generated, and the user can select which action to take. e.g. the "run" command might encounter multiple "main" functions in the project. Also, if the user has multiple exposed versions of parsec registered, and no .cabal file is present, running "Go to Defintion" on the "Parsec" identifier will prompt the user with a dropdown of parsec versions to choose from.
+
+The user should feel like she is a craftsperson using a tool. She should not feel like she is being interviewed.
+
+lots and lots
+ajfdkl
+jakflsdjfkla
+
+
+
+
+jfkdla
+
+a
+
+fd
+sajjk
+
+
+
+
+jfkda
+
+
+
+jkfdsa
+j
+j
+kfas
+

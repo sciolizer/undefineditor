@@ -1,0 +1,31 @@
+things that need to go into the model
+
+where an excluded projects tab is open (if multiple tabs are open, then the changes should be replicated across all of them)
+windows open
+tabs in each, and which tab has focus in that particular window
+
+
+
+first thing to write, I think is
+
+writeModel :: STM a -> IO a
+readModel :: STM a -> IO a
+
+which executes the given stm actions atomically and waits for changes to be replicated in the gui.
+
+how do you wait for all threads blocked on a TVar to do their thing?
+
+I don't understand alwaysSucceeds. (I do understand how always is defined
+in terms of alwaysSucceeds.)
+
+data DVar a
+
+newDVar :: DM (DVar a)
+writeDVar :: DVar a -> a -> DM ()
+readDVar :: DVar a -> DM a
+
+cleanly :: DM a -> IO a
+
+onDirtyDVar :: DVar a -> (a -> IO ()) -> IO ()
+
+
