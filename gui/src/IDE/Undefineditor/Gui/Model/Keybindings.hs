@@ -1,6 +1,8 @@
 {-# LANGUAGE
  NoMonomorphismRestriction
  #-}
+
+-- | Manages keybindings.
 module IDE.Undefineditor.Gui.Model.Keybindings (
   Keybindings(),
   Shortcut,
@@ -10,12 +12,12 @@ module IDE.Undefineditor.Gui.Model.Keybindings (
   showKeybinding
 ) where
 
-import Control.Monad.Trans.Writer
-import Data.Function
-import Data.List
-import qualified Data.Map as M
-import qualified Data.Set as S
-import Graphics.UI.Gtk hiding (on)
+import Control.Monad.Trans.Writer (Writer(), execWriter, tell)
+import Data.Function (on)
+import Data.List (intercalate)
+import qualified Data.Map as M (Map(), empty, insertWithKey', lookup)
+import qualified Data.Set as S (Set(), singleton, toAscList)
+import Graphics.UI.Gtk (KeyVal(), Modifier(Control), keyFromName, keyName)
 
 import IDE.Undefineditor.Gui.Controller.Reactive
 import IDE.Undefineditor.Gui.Model.Activations
@@ -23,17 +25,22 @@ import IDE.Undefineditor.Gui.Model.Activations
 -- who creates an Enum instance without creating an Ord instance???
 instance Ord Modifier where compare = compare `on` fromEnum
 
-data Keybindings = Keybindings
+-- | A bidirectional map between keyboard shortcuts and 'Activation's. 
+data Keybindings = Keybindings -- current implementation of keybindings is static, but the interface is written to allow keybindings to be dynamically changed
 
+-- | Instantiates a map.
 newKeybindings :: IO Keybindings
 newKeybindings = return Keybindings
 
+-- | Looks up the activation associated with a keyboard shortcut.
 getActivation :: Keybindings -> Shortcut -> IO (Maybe Activation)
 getActivation _kb shortcut = return $ M.lookup shortcut (snd keyBindings)
 
-getKeybinding :: Keybindings -> Activation -> RRead (Maybe Shortcut)
+-- | Looks up the shortcut associated with an activation.
+getKeybinding :: Keybindings -> Activation -> Stream (Maybe Shortcut)
 getKeybinding _kb act = return $ M.lookup act (fst keyBindings)
 
+-- | A keyboard shortcut is a set of modifiers and a keyval.
 type Shortcut = (S.Set Modifier, KeyVal)
 
 keyBindings :: (M.Map Activation Shortcut, M.Map Shortcut Activation)
@@ -60,5 +67,6 @@ canonicalize m = (left, right) where
 
 inject = M.insertWithKey' (\k _ -> error $ "duplicate: " ++ show k)
 
+-- | Human readable keyboard shortcut.
 showKeybinding :: Shortcut -> String
 showKeybinding (mods, kv) = intercalate "+" (map show (S.toAscList mods)) ++ "+" ++ keyName kv

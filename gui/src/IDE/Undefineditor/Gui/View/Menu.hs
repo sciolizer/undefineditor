@@ -3,36 +3,37 @@
  GeneralizedNewtypeDeriving,
  RankNTypes
  #-}
+
+-- | Code for constructing a menu in a window.
 module IDE.Undefineditor.Gui.View.Menu (
-  MenuBuilder(),
-  menuTemplate,
-  runMenuBuilder
+  buildMenu
 ) where
 
-import Control.Monad
-import Control.Monad.IO.Class
-import Control.Monad.Trans.RWS
-import qualified Data.Set as S
-import Graphics.UI.Gtk
+import Control.Applicative (Applicative())
+import Control.Monad (unless)
+import Control.Monad.IO.Class (MonadIO(), liftIO)
+import Control.Monad.Trans.RWS (RWST(), asks, local, runRWST, tell)
+import qualified Data.Set as S (difference, fromList, null, toAscList)
+import Graphics.UI.Gtk (
+  Menu(),
+  MenuItem(),
+  MenuItemClass(),
+  MenuShellClass(),
+  containerAdd,
+  imageMenuItemNewFromStock,
+  labelNewWithMnemonic,
+  labelSetTextWithMnemonic,
+  menuItemActivate,
+  menuItemNew,
+  menuItemNewWithMnemonic,
+  menuItemSetSubmenu,
+  menuNew,
+  menuShellAppend,
+  on)
 
 import IDE.Undefineditor.Gui.Controller.Reactive
 import IDE.Undefineditor.Gui.Model.Activations
 import IDE.Undefineditor.Gui.Model.Keybindings
-
-{-
-newEditorMenu = do
-  menuBar <- menuBarNew
-  extendMenuBar menuBar
-
-extendMenuBar menuBar = do
-  fileMenu <- menuNew
-  blastOff <- menuItemNewWithMnemonic "bla_st off"
-  fileMenuActivator <- menuItemNewWithMnemonic "w_hee"
-  menuShellAppend fileMenu blastOff
-  menuItemSetSubmenu fileMenuActivator fileMenu
-  menuShellAppend menuBar fileMenuActivator
-  return menuBar
-  -}
 
 menuTemplate = do
   parent "_File" $ do
@@ -66,7 +67,7 @@ menuTemplate = do
     child "Find _occurences" AFindOccurences
 
 newtype MenuBuilder a = MenuBuilder (RWST MenuBuilderContext [Activation] () IO a)
-  deriving (Monad, MonadIO)
+  deriving (Applicative, Functor, Monad, MonadIO)
 
 data MenuBuilderContext = MenuBuilderContext {
   addChild :: forall mi. (MenuItemClass mi) => mi -> IO (),
@@ -81,7 +82,7 @@ child label activation = do
         return (label ++ (maybe "" (\b -> " (" ++ showKeybinding b ++ ")") mbBind))
   extendMenu activation =<< liftIO (menuItemNewWithRReadMnemonic name)
 
-menuItemNewWithRReadMnemonic :: RRead String -> IO MenuItem
+menuItemNewWithRReadMnemonic :: Stream String -> IO MenuItem
 menuItemNewWithRReadMnemonic str = do
   rec
     Just initialStr <- react (Just `fmap` str) $ \old new ->
@@ -116,14 +117,15 @@ parent label (MenuBuilder children) = MenuBuilder $ do
     return (subMenu :: Menu)
   local (\mbc -> mbc { addChild = menuShellAppend subMenu }) children
 
-runMenuBuilder
+-- | Constructs a menu.
+buildMenu
   :: (MenuShellClass shell)
-  => (Activation -> IO ())
-  -> shell
-  -> Keybindings
-  -> MenuBuilder a
-  -> IO a
-runMenuBuilder getAction shell kb (MenuBuilder rwst) = do
+  => shell -- ^ parent menu, usually a 'MenuBar'.
+  -> (Activation -> IO ()) -- ^ Action to execute when the given activation is activated from the menu.
+  -> Keybindings -- ^ Shortcut assignments for 'Activation's.
+  -> IO ()
+buildMenu shell getAction kb = do
+  let MenuBuilder rwst = menuTemplate
   (ret, (), acts) <- runRWST rwst (MenuBuilderContext (menuShellAppend shell) getAction kb) ()
   let unused = S.fromList enumeration `S.difference` (S.fromList acts)
   unless (S.null unused) $ do

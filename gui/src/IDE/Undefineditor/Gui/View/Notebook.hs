@@ -1,62 +1,89 @@
 {-# LANGUAGE
  NoMonomorphismRestriction
  #-}
+
+-- | Convenience functions for dealing with Gtk 'Notebook's.
 module IDE.Undefineditor.Gui.View.Notebook (
-  EditorTab(),
-  tabWidget,
-  editorTabSourceView,
-  newTab,
-  newSearchModuleTab
+  newTab
+  -- newSearchModuleTab
 ) where
 
-import Control.Concurrent
--- import Data.Tree
-import Graphics.UI.Gtk {- (
+import Control.Concurrent.STM (atomically)
+import Control.Monad (unless)
+import Graphics.UI.Gtk (
   AttrOp((:=)),
+  NotebookClass(),
   PolicyType(PolicyNever),
   WrapMode(WrapChar),
   containerAdd,
   notebookInsertPage,
+  notebookPageNum,
+  notebookRemovePage,
+  notebookSetTabLabelText,
   notebookSetTabReorderable,
   scrolledWindowHscrollbarPolicy,
   scrolledWindowNew,
   set,
-  textBufferSetText,
   textViewWrapMode,
   widgetShow
-  ) -}
+  )
 import Graphics.UI.Gtk.SourceView (
-  SourceView,
-  -- sourceBufferNew,
-  -- sourceBufferNewWithLanguage,
-  -- sourceLanguageManagerGetDefault,
-  -- sourceLanguageManagerGetLanguageIds,
-  -- sourceLanguageManagerGuessLanguage,
+  SourceBuffer(),
+  SourceView(),
   sourceViewNewWithBuffer,
   sourceViewShowLineNumbers
   )
 
-data EditorTab = EditorTab { tabWidget :: Widget, editorTabSourceView :: SourceView }
+import IDE.Undefineditor.Gui.Controller.Reactive
 
+-- | Constructs a new tab.
+newTab
+  :: NotebookClass self
+  => self -- ^ 'Notebook' to add tab to.
+  -> Int -- ^ Index at which to insert tab.
+  -> SourceBuffer -- ^ Editor to put in body of notebook page.
+  -> Stream (Maybe String) -- ^ Name of the tab. 'Nothing' indicates file has been deleted or closed.
+  -> IO SourceView
 newTab notebook whence buffer tabName = do
   scrolledWindow <- scrolledWindowNew Nothing Nothing
-  putStrLn "created scrolled window"
   set scrolledWindow [scrolledWindowHscrollbarPolicy := PolicyNever]
   sourceView <- sourceViewNewWithBuffer buffer
   set sourceView [textViewWrapMode := WrapChar, sourceViewShowLineNumbers := True]
-  putStrLn "set wrap mode"
   containerAdd scrolledWindow sourceView
-  widgetShow scrolledWindow -- or do I need to show both?
+  widgetShow scrolledWindow -- still haven't figured when widgetShow is and is not necessary
   widgetShow sourceView
-  putStrLn "showed the source view"
-  myTid <- myThreadId
-  putStrLn $ "thread id inside newTab: " ++ show myTid
-  notebookInsertPage notebook scrolledWindow tabName whence
-  putStrLn "insert page into notebook"
-  notebookSetTabReorderable notebook scrolledWindow False
-  putStrLn "made sure tabs were not reorderable"
-  return (EditorTab (toWidget scrolledWindow) sourceView)
+  tabName <- registerNameUpdater notebook scrolledWindow tabName
+  case tabName of
+    Nothing -> return sourceView -- file was closed or deleted; don't insert tab into notebook
+    Just str -> do
+      notebookInsertPage notebook scrolledWindow str whence
+      notebookSetTabReorderable notebook scrolledWindow False
+      return sourceView
 
+data UpdateAction = SetText String | CloseTab
+  deriving (Eq, Ord)
+
+registerNameUpdater notebook widget name = do
+  rvars <- newRVars
+  finished <- newRVarIO rvars False
+  let reactee = do
+        fin <- readRVar finished
+        if fin then return Nothing else (Just . maybe CloseTab SetText) `fmap` name
+  ret <- react reactee $ \o n -> unless (o == n) $
+    case n of
+      SetText s -> notebookSetTabLabelText notebook widget s
+      CloseTab -> do
+        mbNum <- notebookPageNum notebook widget
+        case mbNum of
+          Nothing -> putStrLn "todo: trying to remove widget from notebook more than once; this probably indicates a space leak"
+          Just i -> notebookRemovePage notebook i
+        cleanly rvars . atomically . writeRVar finished $ True -- unregister handler so that widget can be garbage collected
+  case ret of
+    Nothing -> return Nothing
+    Just CloseTab -> return Nothing
+    Just (SetText s) -> return (Just s)
+
+{-
 newSearchModuleTab notebook = do
   vbox <- vBoxNew False 0
   entry <- entryNew
@@ -83,3 +110,4 @@ newSearchModuleTab notebook = do
   widgetShow treeView
   notebookAppendPage notebook vbox "Open Module"
   notebookSetTabReorderable notebook vbox False -- what? Why does this not take an index?
+  -}

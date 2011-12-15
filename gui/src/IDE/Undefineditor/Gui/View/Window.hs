@@ -2,86 +2,85 @@
  GeneralizedNewtypeDeriving,
  NoMonomorphismRestriction
  #-}
-module IDE.Undefineditor.Gui.View.Window where
 
--- import Control.Concurrent.STM (atomically)
-import Control.Monad
+-- | Currently the main entry point for the application.
+-- This will likely change in the future, when I support
+-- having multiple windows.
+module IDE.Undefineditor.Gui.View.Window (
+  main
+) where
+
+import Control.Monad (forM)
 import Control.Monad.IO.Class (MonadIO(), liftIO)
-import Data.Maybe
-import qualified Data.Set as S
-import Graphics.UI.Gtk {- (
+import qualified Data.Set as S (fromList)
+import Graphics.UI.Gtk (
   FileChooserAction(FileChooserActionOpen),
-  Notebook(),
+  Packing(PackGrow, PackNatural),
   ResponseId(ResponseNone,ResponseAccept,ResponseCancel,ResponseDeleteEvent),
-  builderAddFromFile,
-  builderGetObject,
-  builderNew,
-  castToMenuItem,
-  castToNotebook,
-  castToWindow,
+  boxPackStart,
+  containerAdd,
   deleteEvent,
   dialogRun,
+  eventKeyVal,
+  eventModifier,
   fileChooserDialogNew,
   fileChooserGetFilename,
   initGUI,
+  keyPressEvent,
   mainGUI,
   mainQuit,
-  menuItemActivate,
-  notebookRemovePage,
-  notebookSetCurrentPage,
+  menuBarNew,
+  notebookNew,
   on,
-  pageReordered,
   postGUIAsync,
-  switchPage,
+  textBufferGetInsert,
+  textBufferGetIterAtLine,
+  textBufferGetIterAtMark,
+  textBufferGetIterAtOffset,
+  textBufferPlaceCursor,
+  textBufferSelectRange,
+  textIterBackwardChars,
+  textIterCopy,
+  textIterForwardChars,
+  textIterGetLine,
+  textIterGetText,
+  textIterGetOffset,
+  textIterGetVisibleLineOffset,
+  textIterOrder,
+  textViewGetBuffer,
+  textViewScrollToMark,
+  vBoxNew,
   widgetHide,
   widgetShow,
-  widgetShowAll
-  ) -}
-import Graphics.UI.Gtk.SourceView
+  widgetShowAll,
+  windowNew
+  )
+import Graphics.UI.Gtk.SourceView (SourceView())
 
 import IDE.Undefineditor.Definition
-import IDE.Undefineditor.Gui.Concurrent.GuiThread
 import IDE.Undefineditor.Gui.Controller.Reactive
 import IDE.Undefineditor.Gui.Controller.Tabs
 import IDE.Undefineditor.Gui.Model.Activations
--- import qualified IDE.Undefineditor.Gui.Model.FocusedMap as FM
 import IDE.Undefineditor.Gui.Model.Keybindings
 import IDE.Undefineditor.Gui.Model.OpenFiles
-import IDE.Undefineditor.Gui.Util.Coords
 import IDE.Undefineditor.Gui.Util.ModalComboBox
 import IDE.Undefineditor.Gui.Util.TextBuffer
 import IDE.Undefineditor.Gui.View.Menu
-import IDE.Undefineditor.Gui.View.Notebook
--- import IDE.Undefineditor.Util.Diff
-import IDE.Undefineditor.Util.Safe
 
--- import Paths_undefineditor(getDataFileName)
-getDataFileName = return
-
--- todo: clean shutdown... need to make sure all of the file watchers get cancelled
---
--- also todo: what happens if you attempt to close a tab which has not been saved?
--- obviously that tab should not be closed!
--- So, I guess saving a file should be done BEFORE modifying the model?
+-- | Initializes gtk and creates a new window.
+main :: IO ()
 main = do
   initGUI
-  postGUIAsync (putStrLn "yeah, too early")
   postGUIAsync $ do
-    inGuiThread (putStrLn "does this work?")
-    -- xml <- builderNew
-    -- builderAddFromFile xml "hellogtk2hs.glade"
-    -- Just xml <- xmlNew "hellogtk2hs.glade"
-    -- notebook <- builderGetObject xml castToNotebook "notebook" :: IO Notebook
     rvars <- newRVars
     kb <- newKeybindings
     openFiles <- newOpenFiles rvars
     (windowEditor, menuBar, notebook) <- mkWindow
-    tabs <- newTabs rvars openFiles notebook -- todo: we should really be able to get the rvars from the openFiles object
+    tabs <- newTabs rvars openFiles notebook
     {-
     tabs <- atomically $ newRVar FS.empty
     watchers <- newIORef [] -- safe because is only ever modified by the gui thread
     react (Just `fmap` readRVar tabs) $ \prevFiles curFiles -> do
-      putStrLn "in responder for tabs dvar"
       let add i 
       diffAndApply (FS.toAscList prevFiles) (FS.toAscList curFiles) (notebookRemovePage notebook) (makeTab notebook)
       -- "unless" check is necessary to prevent an infinite signal firing chain
@@ -91,17 +90,8 @@ main = do
           Just i -> notebookSetCurrentPage notebook i
     -- tabs <- notebookAttachmentsNew (notebook :: Notebook)
     -}
-    putStrLn "wiring events"
-    wireEvents notebook
-    -- windowEditor <- builderGetObject xml castToWindow "windowEditor"
-    -- menuBar <- builderGetObject xml castToMenuBar "menubar"
     let acts = actions windowEditor rvars openFiles tabs
-    runMenuBuilder acts menuBar kb menuTemplate
-    {-
-    vbox <- builderGetObject xml castToVBox "vbox2"
-    editorMenu <- newEditorMenu
-    boxPackStart vbox editorMenu PackNatural 0
-    -}
+    buildMenu menuBar acts kb
     on windowEditor deleteEvent $ liftIO $ do
       quit rvars tabs
       return True
@@ -111,20 +101,13 @@ main = do
       mbAct <- liftIO $ getActivation kb (S.fromList mods, kv)
       case mbAct of
         Nothing -> do
-          liftIO $ putStrLn $ "ignoring " ++ show mods ++ "+" ++ keyName kv
           return False
         Just act -> do
           liftIO $ acts act
           return True
     widgetShowAll windowEditor
-
-    -- for quick debugging:
-    cleanly rvars $ openTabFile tabs "/home/jball/git/undefined/src/IDE/Undefineditor/Gui/View/Window.hs"
-    -- buildAll ac
-
   mainGUI
 
--- todo: we should really be able to get the rvars from the tabs object directly
 quit rvars tabs = do
   cleanly rvars $ closeAllTabs tabs -- saves all files
   mainQuit
@@ -140,6 +123,7 @@ mkWindow = do
   containerAdd window vbox
   return (window, menuBar, notebook)
 
+{-
 mkFindBox = do
   findBox <- hBoxNew False 0
   entry <- entryNew
@@ -149,14 +133,20 @@ mkFindBox = do
   boxPackStart findBox prev PackNatural 0
   boxPackStart findBox next PackNatural 0
   return findBox
+  -}
 
 data Tab = TabFile String | TabOpenModule
   deriving (Eq, Ord) -- todo: replace Ord instance with a better one
 
-actions window rvars openFiles tabs activation =
-  case activation of
+actions window rvars openFiles tabs activation = ret where
+  getBufferContentsAndOffset sourceView = do
+      tb <- textViewGetBuffer sourceView
+      contents <- textBufferGetContents tb
+      co <- textBufferGetInsertOffset tb
+      return (tb, contents, co)
+  ret = case activation of
     ANew -> return ()
-    AOpenModule -> return () -- change tabs (FS.focusOn TabOpenModule . FS.insert TabOpenModule) -- todo: highlight contents of entry box
+    AOpenModule -> return () -- todo: highlight contents of entry box
     AOpenFile -> do
       filename <- fileDialog
       maybe (return ()) (cleanly rvars . openTabFile tabs) filename
@@ -169,18 +159,15 @@ actions window rvars openFiles tabs activation =
     AFind -> return () -- textIterForwardSearch and textIterBackwardSearch will probably be useful functions for this
     AHoogle -> return ()
     ARearrangeImports -> return ()
-    ATabNext -> cleanly rvars $ nextTab tabs -- change tabs (modFocus 1)
-    ATabPrevious -> cleanly rvars $ previousTab tabs -- change tabs (modFocus (-1))
+    ATabNext -> cleanly rvars $ nextTab tabs
+    ATabPrevious -> cleanly rvars $ previousTab tabs
     ATabToWindow -> return ()
-  --   AKeybindings leaving out because should not have any keybindings -> return ()
     AProjects -> return ()
     AGoToDefinition -> putStrLn "go to definition not implemented"
     AGoToUsage -> return ()
     AFindUsages -> return ()
     ASelectCurrentIdentifier -> withCurrentTab tabs $ \_fid sourceView -> do
-      tb <- textViewGetBuffer sourceView
-      contents <- textBufferGetContents tb
-      co <- textBufferGetInsertOffset tb
+      (tb, contents, co) <- getBufferContentsAndOffset sourceView
       mbLexeme <- getLexeme contents co
       case mbLexeme of
         Nothing -> putStrLn "no identifier underneath cursor"
@@ -188,9 +175,7 @@ actions window rvars openFiles tabs activation =
           [stIter, limIter] <- mapM (textBufferGetIterAtOffset tb) [start, limit]
           textBufferSelectRange tb stIter limIter
     AFindOccurences -> withCurrentTab tabs $ \fid sourceView -> do
-      tb <- textViewGetBuffer sourceView
-      contents <- textBufferGetContents tb
-      co <- textBufferGetInsertOffset tb
+      (tb, contents, co) <- getBufferContentsAndOffset sourceView
       mbLocs <- definitionCandidates (getFilePath fid) contents co
       case mbLocs of
         Nothing -> return ()
@@ -210,12 +195,8 @@ actions window rvars openFiles tabs activation =
           textViewScrollToMark sourceView insertMark 0.0 Nothing
           iter <- textBufferGetIterAtMark tb insertMark
           Rectangle x y width height <- textViewGetIterLocation sourceView iter
-          putStrLn $ "buffer coords: " ++ show (x, y)
-          mapM_ (\twt -> putStrLn . ((show twt ++ ": ") ++) . show =<< textViewBufferToWindowCoords sourceView twt (x, y)) [TextWindowWidget .. TextWindowBottom]
           (x', y') <- textViewBufferToWindowCoords sourceView {- TextWindowWidget {- TextWindowText, -} -} TextWindowLeft (x,y)
-          putStrLn $ "window coords: " ++ show (x', y')
           (x'', y'') <- windowToScreenCoords window (x', y')
-          putStrLn $ "screen coords: " ++ show (x'', y'')
         -}
           actions <- forM offsets $ \(_,o) -> do -- todo: don't ignore the FilePath
             iter <- textBufferGetIterAtOffset tb o
@@ -237,7 +218,7 @@ actions window rvars openFiles tabs activation =
 jumpTo offset sourceView tb = do
   textBufferPlaceCursor tb =<< textBufferGetIterAtOffset tb offset
   insertMark <- textBufferGetInsert tb
-  textViewScrollToMark sourceView insertMark 0.0 (Just (0.5, 0.5)) -- put insert mark in center
+  textViewScrollToMark sourceView insertMark 0.0 (Just (0.5, 0.5)) -- puts insert mark in center of screen
 
 textBufferGetInsertOffset tb =
   textIterGetOffset =<< textBufferGetIterAtMark tb =<< textBufferGetInsert tb
@@ -247,27 +228,7 @@ withCurrentTab tabs act = do
   mbTb <- getCurrentTab tabs
   case mbTb of
     Nothing -> return ()
-    Just (fid, et) -> act fid (editorTabSourceView et)
-
--- wireEvents :: NotebookAttachments TabContext -> IO ()
-wireEvents notebook = do
-  {-
-  let forMenuItem s act = do
-        entry <- builderGetObject xml castToMenuItem s
-        on entry menuItemActivate (safe act)
-        -}
-  -- notebook <- notebookAttachmentsGetNotebook tabs
-  on notebook pageReordered (\_ i -> safe (putStrLn $ "page reordered: " ++ show i)) -- I think reordering is disabled, so this should never fire.
-  -- on notebook switchPage (\i -> safe (putStrLn ("switched page: " ++ show i) >> change tabs (FS.setFocus i)))
-  -- on notebook switchPage (\i -> safe (showSwitchedPage tabs notebook i)) -- todo: restore functionality
-  -- on menuItemNewTab menuItemActivate (safe (newTab notebook))
-  return ()
-
-{-
-change v f = cleanly $ do
-  x <- liftReadM (readRVar v)
-  writeRVar v (f x)
-  -}
+    Just (fid, sourceView) -> act fid sourceView
 
 fileDialog = do
   dialog <- fileChooserDialogNew Nothing Nothing FileChooserActionOpen [("gtk-open", ResponseAccept), ("gtk-cancel", ResponseCancel)]
@@ -279,43 +240,7 @@ fileDialog = do
     ResponseDeleteEvent -> return Nothing
     ResponseNone -> internalBug "got ResponseNone from file open dialog"
     _ -> internalBug "got unexpected response code from file open dialog"
-  widgetHide dialog -- eh? not destroy? leak, maybe?
+  widgetHide dialog
   return ret
-
-{-
-loadFile tabs f =
-  change tabs (FS.focusOn t . FS.insert t) where
-    t = TabFile f
-    -}
-
-{-
-goToDefinition sourceView = do
-  textBuffer <- textViewGetBuffer sourceView
-  textMark <- textBufferGetInsert textBuffer
-  textIter <- textBufferGetIterAtMark textBuffer textMark
-  i <- textIterGetOffset textIter
-  putStrLn ("Cursor position is: " ++ show i)
--}
-
-{-
-buildAll ac = do
-  let nb = notebook . acWidgets $ ac
-  num <- notebookGetNPages nb
-  let getFp i = tcFilePath . fromJust <$> (notebookGetAttachment (acTabContexts ac) . fromJust =<< notebookGetNthPage nb i)
-  fps <- mapM getFp [0..(num-1)]
-  print fps
-  -- runUndefined ac (build fps)
-  build (head fps) -- todo: shouldn't be head
-  -}
-
--- todo: this function needs an additional argument
-buildCurrent = putStrLn "building current"
-
-{-
-showSwitchedPage tabs nb i = do
-  (Just w) <- notebookGetNthPage nb i
-  (Just (TabContext fp)) <- notebookAttachmentsGet tabs w
-  putStrLn $ "Filepath is: " ++ fp
-  -}
 
 internalBug = error

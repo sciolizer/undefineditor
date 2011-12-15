@@ -42,12 +42,26 @@ Build-type:          Simple
 -- Constraint on the version of Cabal needed to build this package.
 Cabal-version:       >=1.2
 
-Executable undefineditor
-  -- .hs or .lhs file containing the Main module.
-  Main-is: Main.hs
+-- Library is separated out mainly so that haddock will generate
+-- documentation.
+Library
+  Exposed-modules: IDE.Undefineditor.Gui.Concurrent.Background
+                   IDE.Undefineditor.Gui.Concurrent.FileWatch
+                   IDE.Undefineditor.Gui.Controller.MRVar
+                   IDE.Undefineditor.Gui.Controller.Reactive
+                   IDE.Undefineditor.Gui.Controller.Tabs
+                   IDE.Undefineditor.Gui.Model.Activations
+                   IDE.Undefineditor.Gui.Model.FocusedMap
+                   IDE.Undefineditor.Gui.Model.Keybindings
+                   IDE.Undefineditor.Gui.Model.OpenFiles
+                   IDE.Undefineditor.Gui.Util.ModalComboBox
+                   IDE.Undefineditor.Gui.Util.TextBuffer
+                   IDE.Undefineditor.Gui.View.Menu
+                   IDE.Undefineditor.Gui.View.Notebook
+                   IDE.Undefineditor.Gui.View.Window
+                   IDE.Undefineditor.Util.ReentrantLock
+                   IDE.Undefineditor.Util.Safe
   hs-source-dirs: src
-  
-  -- Packages needed in order to build this package.
   Build-depends: base,
                  containers >= 0.4.0.0 && < 0.5,
                  directory >= 1.1.0.1 && < 1.2,
@@ -60,11 +74,9 @@ Executable undefineditor
                  stm >= 2.2.0.1 && < 2.3,
                  transformers >= 0.2.2.0 && < 0.3,
                  undefineditor-lib >= 0.1 && < 0.2
-  
+
+Executable undefineditor
+  -- .hs or .lhs file containing the Main module.
+  Main-is: Main.hs
+  hs-source-dirs: src
   ghc-options: -threaded
-  -- Modules not exported by this package.
-  -- Other-modules:       
-  
-  -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
-  -- Build-tools:         
-  

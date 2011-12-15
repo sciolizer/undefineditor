@@ -1,17 +1,46 @@
+-- | A dialog box presenting the user with a collection of options.
 module IDE.Undefineditor.Gui.Util.ModalComboBox (
   runModalComboBox
 ) where
 
-import Control.Monad
-import Control.Monad.IO.Class
-import Data.IORef
-import Graphics.UI.Gtk
+import Control.Monad (unless, when)
+import Data.IORef (newIORef, readIORef, writeIORef)
+import Graphics.UI.Gtk (
+  Packing(PackGrow),
+  ResponseId(ResponseCancel, ResponseNone, ResponseOk),
+  WindowClass(),
+  boxPackStart,
+  changed,
+  comboBoxAppendText,
+  comboBoxGetActive,
+  comboBoxNewText,
+  comboBoxPopup,
+  dialogAddButton,
+  dialogGetUpper,
+  dialogNew,
+  dialogResponse,
+  mainIteration,
+  mainQuit,
+  on,
+  response,
+  widgetHide,
+  widgetShow,
+  windowSetModal,
+  windowSetTransientFor
+  )
 
+-- | Presents the user with a collection of options, and executes the action associated
+-- with that option.
+runModalComboBox
+  :: WindowClass parent
+  => parent -- ^ The parent window. This is used to center the new dialog box.
+  -> [(String, IO ())] -- ^ A list of options to present to the user, with their corresponding actions.
+  -> IO () -- ^ The action selected by the user, or nothing if the user opted to cancel.
 runModalComboBox _ [] = return ()
 runModalComboBox parentWindow options = do
   dialog <- dialogNew
   comboBox <- comboBoxNewText
-  mapM_ (comboBoxAppendText comboBox) (map fst options)
+  mapM_ (comboBoxAppendText comboBox . fst) options
   vbox <- dialogGetUpper dialog
   boxPackStart vbox comboBox PackGrow 0
   widgetShow comboBox
@@ -30,12 +59,10 @@ runModalComboBox parentWindow options = do
   rid <- readIORef ridRef
   -- rid <- dialogRun dialog
 
-  putStrLn $ "responseId: " ++ show rid
   widgetHide dialog -- todo: this should be in the "finally" of a bracket
   when (rid == ResponseOk) $ do
     which <- comboBoxGetActive comboBox
-    unless (which == (-1)) $ do
-      snd (options !! which)
+    unless (which == (-1)) $ snd (options !! which)
 
 -- todo: put some brackets in here
 -- also todo: I don't think a comboBox is the right control for this;
@@ -52,7 +79,7 @@ runModalComboBox parentWindow {- gravity x y -} options = do
   mapM_ (comboBoxAppendText comboBox) (map fst options)
   -- I don't think "changed" is right either, because what if you want to stick with the same one?
   on comboBox changed (writeIORef ref True)
-  on comboBox focusOutEvent (liftIO $ putStrLn "focusOut" >> writeIORef ref True >> return True)
+  on comboBox focusOutEvent (liftIO $ writeIORef ref True >> return True)
   {- popupShownNotify seems to have a bug in it
   on comboBox popupShownNotify $ do
     b <- get comboBox comboBoxPopupShown
@@ -82,4 +109,4 @@ waitForSelection ref = do
     then mainQuit
     else do
       b <- readIORef ref
-      if b then return () else waitForSelection ref
+      unless b $ waitForSelection ref

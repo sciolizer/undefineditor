@@ -1,34 +1,37 @@
+-- | Tracks all open files, saves unsaved files periodically, reloads files that have been modified
+-- on disk, and shares 'SourceBuffer's between multiple tabs.
 module IDE.Undefineditor.Gui.Model.OpenFiles (
+  -- * Open file collection
   OpenFiles(),
+  newOpenFiles,
+
+  -- * Individual files
   FileId(),
+  openFile,
+  getFilePath,
+  closeFile,
+
+  -- * Saving files
   Saved(..),
   isFileSaved,
-
-  newOpenFiles,
-  getFilePath,
-  openFile,
-  saveDirtyFiles,
-  closeFile
+  saveDirtyFiles
 
 ) where
 
-import Control.Concurrent hiding (yield)
-import Control.Monad
-import Data.Function
-import qualified Data.Map as M
-import qualified Data.Set as S
-import Data.Unique
-import Graphics.UI.Gtk hiding (on)
-import qualified Graphics.UI.Gtk as Gtk
+import Control.Concurrent (forkOS, threadDelay)
+import Control.Monad (unless)
+import Data.Function (on)
+import qualified Data.Map as M (Map(), delete, empty, fromList, insert, lookup, toList)
+import qualified Data.Set as S (Set(), delete, insert, null, singleton)
+import Data.Unique (Unique(), newUnique)
+import Graphics.UI.Gtk (bufferChanged, postGUIAsync, textBufferSetText)
+import qualified Graphics.UI.Gtk as Gtk (on)
 import Graphics.UI.Gtk.SourceView (
   SourceBuffer(),
   sourceBufferNew,
   sourceBufferNewWithLanguage,
   sourceLanguageManagerGetDefault,
-  sourceLanguageManagerGetLanguageIds,
   sourceLanguageManagerGuessLanguage
-  -- sourceViewNewWithBuffer,
-  -- sourceViewShowLineNumbers
   )
 
 import IDE.Undefineditor.Gui.Concurrent.Background
@@ -36,67 +39,76 @@ import IDE.Undefineditor.Gui.Concurrent.FileWatch
 import IDE.Undefineditor.Gui.Controller.MRVar
 import IDE.Undefineditor.Gui.Controller.Reactive
 import IDE.Undefineditor.Gui.Util.TextBuffer
-import IDE.Undefineditor.Util.Fork
-import IDE.Undefineditor.Util.Safe
 
-data Saved = Dirty | Clean
+-- | Whether a file has been modified since it's last save.
+data Saved =
+    Dirty -- ^ File has been modified since it was last saved.
+  | Clean -- ^ Buffer and file system are in-sync.
   deriving (Bounded, Enum, Eq, Ord, Read, Show)
 
+-- | A collection of files.
 data OpenFiles = OpenFiles (MRVar (M.Map FilePath (S.Set FileId, SourceBuffer, FileWatcher, Saved))) (IO ())
 
-isFileSaved :: OpenFiles -> FilePath -> RRead (Maybe Saved)
-isFileSaved (OpenFiles mrvar _) fp = do
+-- | Determines whether the given file is dirty or clean. Returns 'Nothing' if the 'FileId' has been closed or deleted.
+isFileSaved :: FileId -> Stream (Maybe Saved)
+isFileSaved fid = do
+  let OpenFiles mrvar _ = openFiles fid
+  let fp = getFilePath fid
   mp <- readMRVar mrvar
   case M.lookup fp mp of
     Nothing -> return Nothing
     Just (_, _, _, s) -> return (Just s)
 
-data FileId = FileId Unique OpenFiles FilePath (IO ())
-
-identity (FileId u _ _ _) = u
-
-getFilePath (FileId _ _ fp _) = fp
+-- | A handle to a file. Corresponds to a tab in the interface. If two 'FileId's are equal, then
+-- their 'FilePath's are equal, but the converse is not necessarily true.
+data FileId = FileId {
+  identity :: Unique,
+  openFiles :: OpenFiles,
+  -- | Gets the 'FilePath' that the given 'FileId' was constructed with.
+  getFilePath :: FilePath }
 
 instance Eq FileId where (==) = (==) `on` identity
 instance Ord FileId where compare = compare `on` identity
 
+-- | Instantiates a new (empty) collection of 'OpenFiles', and creates a 'forkOS' 'Background'
+-- thread, which periodically saves modified files.
 newOpenFiles :: RVars -> IO OpenFiles
 newOpenFiles rvars = do
+  -- We must use forkOS instead of forkIO because the haskell RTS cannot preempt gtk's
+  -- event loop.
+  background <- newBackground forkOS
   ret <- newMRVar rvars M.empty
-  background <- newBackground fork -- todo: is forkOS the right thing to do?
   let saveall = launchBackground background $ do
           -- todo: this thread should give up waiting if the application is shutting down
-          putStrLn "starting thread delay"
-          threadDelay 3000000 -- 3 seconds; but may be as much as 6 seconds if a yield happens
-          putStrLn "finishing thread delay; about to yield"
+          threadDelay 1000000 -- 1 second; but may be as much as 2 seconds if a yield happens
+            -- todo: (not really necessary, but could be fun... add a yieldFor :: Background -> Int -> IO () function to the Background module, so that we don't end up with this weird 2 second behavior)
           yield background
-          putStrLn "yield was uneventful; proceeding with saving of files"
           postGUIAsync (cleanly rvars $ saveDirtyFiles_ ret)
   return (OpenFiles ret saveall)
 
+-- | Saves all files in the 'OpenFiles' collection that have not been saved.
 saveDirtyFiles :: OpenFiles -> IO ()
 saveDirtyFiles (OpenFiles mvar _) = saveDirtyFiles_ mvar
 
 saveDirtyFiles_ mvar = modifyMRVar_ mvar $ \mp ->
   return . M.fromList =<< mapM saveFile (M.toList mp)
 
-saveFile x@(fp, (_, _, _, Clean)) = do
-  putStrLn $ "skipping over clean file: " ++ show fp
-  return x
+saveFile x@(_, (_, _, _, Clean)) = return x
 saveFile (fp, (fids, tb, fw, Dirty)) = do
-  putStrLn $ "resaving file: " ++ show fp
   text <- textBufferGetContents tb
   b <- trySaveFile fw (Just text)
-  unless b $ putStrLn $ "saving file was unsuccessful: " ++ show fp
+  unless b $ warning $ "saving file was unsuccessful: " ++ show fp
   return (fp, (fids, tb, fw, Clean))
 
 -- todo: do some canonicalization of the file path; GIO seems to have pretty good support for this
+
+-- | Constructs a new 'SourceBuffer' for the given 'FilePath' if one does not already exist, and
+-- registers the file for background saves.
 openFile
-  :: OpenFiles
-  -> FilePath
-  -> IO () -- callback for when this file gets deleted
-  -> IO (Maybe (FileId, SourceBuffer))
-openFile o@(OpenFiles mvar saveall) fp deletion = modifyMRVar mvar $ \mp ->
+  :: OpenFiles -- ^ Collection of currently open files.
+  -> FilePath -- ^ File to open
+  -> IO (Maybe (FileId, SourceBuffer)) -- ^ returns 'Nothing' if the file does not exist. Otherwise returns an identity for this call to 'openFile' along with a 'SourceBuffer', which will be newly constructed only if this file has not been opened before.
+openFile o@(OpenFiles mvar saveall) fp = modifyMRVar mvar $ \mp ->
   case M.lookup fp mp of
     Nothing -> do
       tb <- mkSourceBuffer fp
@@ -106,13 +118,12 @@ openFile o@(OpenFiles mvar saveall) fp deletion = modifyMRVar mvar $ \mp ->
             modifyMRVar_ mvar $ \mp ->
               case M.lookup fp mp of
                 Nothing -> internalBug "got file deletion notification but file is not in map"
-                Just (fids, _tb, fw, saved) -> do
+                Just (_fids, _tb, fw, saved) -> do
                   stopFileWatcher fw
-                  mapM_ (\(FileId _ _ _ a) -> safe a) (S.toList fids)
                   -- textBufferSetText tb "this file has been deleted" -- dangerous, but will help us discover where the deletion callbacks cannot be trusted
                   case saved of
                     Clean -> return ()
-                    Dirty -> putStrLn "file changes lost: file deleted in file system"
+                    Dirty -> warning "file changes lost: file deleted in file system"
                   return (M.delete fp mp)
           Just contents -> textBufferSetText tb contents
       case contents of
@@ -122,39 +133,39 @@ openFile o@(OpenFiles mvar saveall) fp deletion = modifyMRVar mvar $ \mp ->
         Just z -> do
           textBufferSetText tb z
           Gtk.on tb bufferChanged $ cleanly (getMRVars mvar) $ do
-            putStrLn "bufferchanged"
             modifyMRVar_ mvar $ \mp ->
               case M.lookup fp mp of
                 Nothing -> do
-                  putStrLn $ "buffer changed, but file is no longer in map: " ++ show fp
+                  warning $ "buffer changed, but file is no longer in map: " ++ show fp
                   return mp
                 Just (fids, tb, fw, _) -> do
-                  putStrLn "saving all"
                   saveall
-                  putStrLn "called saving all and returing file marked as dirty"
                   return (M.insert fp (fids, tb, fw, Dirty) mp)
-            putStrLn "mvar set to dirty to match bufferchanged"
           u <- newUnique
-          let fid = FileId u o fp deletion
-          putStrLn "successfully created new text buffer"
-          return (M.insert fp (S.singleton fid, tb, fw, Clean) mp, Just (FileId u o fp deletion, tb))
+          let fid = FileId u o fp
+          return (M.insert fp (S.singleton fid, tb, fw, Clean) mp, Just (fid, tb))
     Just (fids, tb, fw, saved) -> do
       u <- newUnique
-      let fid = FileId u o fp deletion
+      let fid = FileId u o fp
       return (M.insert fp (S.insert fid fids, tb, fw, saved) mp, Just (fid, tb))
 
+-- | Removes the given 'FileId' from the 'OpenFiles' collection that it belongs to. If there are no
+-- other open 'FileId's with the same 'FilePath', then this function will also save the file (if saving is necessary).
 closeFile :: FileId -> IO ()
-closeFile f@(FileId _ (OpenFiles mvar _) fp _) = modifyMRVar_ mvar $ \mp ->
-  case M.lookup fp mp of
-    Nothing -> return mp
-    Just (fids, tb, fw, saved) -> do
-      let fids' = S.delete f fids
-      if S.null fids' then
-        do
-          stopFileWatcher fw
-          saveFile (fp, (fids', tb, fw, saved))
-          return (M.delete fp mp)
-        else return (M.insert fp (fids', tb, fw, saved) mp)
+closeFile fid = modifyMRVar_ mvar closer where
+  OpenFiles mvar _ = openFiles fid
+  fp = getFilePath fid
+  closer mp =
+    case M.lookup fp mp of
+      Nothing -> return mp
+      Just (fids, tb, fw, saved) -> do
+        let fids' = S.delete fid fids
+        if S.null fids' then
+          do
+            stopFileWatcher fw
+            saveFile (fp, (fids', tb, fw, saved))
+            return (M.delete fp mp)
+          else return (M.insert fp (fids', tb, fw, saved) mp)
 
 internalBug = error
 
@@ -162,10 +173,11 @@ mkSourceBuffer path = do
   -- todo: what is glib filename encoding?
   -- todo: if guessing the source language doesn't work, then make a notification to the user that something needs to be installed
   manager <- sourceLanguageManagerGetDefault
-  print =<< sourceLanguageManagerGetLanguageIds manager
   language <- guessLanguage manager path
   case language of
     Just lan -> sourceBufferNewWithLanguage lan
     Nothing -> sourceBufferNew Nothing
 
 guessLanguage manager path = sourceLanguageManagerGuessLanguage manager (Just path) Nothing
+
+warning = putStrLn

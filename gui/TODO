@@ -144,3 +144,7 @@ Split into multiple parts:
 The beautiful thing about this, though, is that you don't need to make multiple source folders. Cabal will let you create two libraries and one executable.
 
 should be a keyboard shortcut for "include this function in the export list"
+
+Why did I develop the habit of using explicit imports? I think it was to decrease
+the frequency of recompilation... and if that's the case, then I might as well be doing it
+for the internal imports as well as the other package imports.
