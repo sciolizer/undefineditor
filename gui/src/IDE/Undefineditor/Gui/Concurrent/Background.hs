@@ -1,5 +1,6 @@
 {-# LANGUAGE
- DeriveDataTypeable
+ DeriveDataTypeable,
+ GeneralizedNewtypeDeriving
  #-}
 
 -- | A threadpool with one thread. It is intended for jobs which are likely to be invalidated, such
@@ -10,6 +11,7 @@
 -- running action to finish, or for the currently running action to call 'yield'.
 module IDE.Undefineditor.Gui.Concurrent.Background (
   Background(),
+  BackgroundM(),
 
   newBackground,
   launchBackground,
@@ -19,15 +21,22 @@ module IDE.Undefineditor.Gui.Concurrent.Background (
 
 import Prelude hiding (catch)
 
+import Control.Applicative (Applicative())
 import Control.Concurrent (MVar(), ThreadId(), forkIO, forkOS, modifyMVar, newMVar, readMVar)
 import Control.Exception (Exception(), catch, finally, fromException, throwIO)
 import Control.Monad (join, void)
+import Control.Monad.IO.Class (MonadIO(), liftIO)
+import Control.Monad.Trans.Reader (ReaderT(), ask, runReaderT)
 import Data.Typeable (Typeable())
+
+-- | Monad for actions that execute in the background, and which possibly terminate early.
+newtype BackgroundM a = BackgroundM (ReaderT (MVar State) IO a)
+  deriving (Applicative, Functor, Monad, MonadIO)
 
 data State =
     Idle
   | Running
-  | Queued (IO ())
+  | Queued (BackgroundM ())
 
 -- | The threadpool
 data Background = Background (MVar State) (IO () -> IO ThreadId)
@@ -43,7 +52,7 @@ newBackground fork = do
 
 -- | Launches the given action on the given threadpool, or queues the action if the threadpool
 -- is busy. Returns immediately.
-launchBackground :: Background -> IO () -> IO ()
+launchBackground :: Background -> BackgroundM () -> IO ()
 launchBackground (Background mvar fork) action = join (modifyMVar mvar enqueue) where
   enqueue x =
     case x of
@@ -61,19 +70,19 @@ launchBackground (Background mvar fork) action = join (modifyMVar mvar enqueue) 
       Nothing -> print e
       Just GracefulExit -> return ()
   startNext = join (modifyMVar mvar dequeue)
-  safeRun :: IO () -> IO ()
-  safeRun act = (act `catch` handler) `finally` startNext
+  safeRun :: BackgroundM () -> IO ()
+  safeRun (BackgroundM act) = (runReaderT act mvar `catch` handler) `finally` startNext
 
--- | If another action is queued up, terminates the current action. Otherwise does nothing.
---
--- The behavior of this function is undefined if the wrong 'Background' instance is given.
-yield :: Background -> IO ()
-yield (Background mvar _) = do
-  state <- readMVar mvar
-  case state of
-    Idle -> internalBug "noticed state was idle when yielding"
-    Running -> return ()
-    Queued _ -> throwIO GracefulExit
+-- | This function is called by actions passed to the 'launchBackground' function which want to provide an opportunity to be stopped in case another action has been queued. If another action is queued up, 'yield' terminates the current action. Otherwise 'yield' does nothing.
+yield :: BackgroundM ()
+yield = BackgroundM $ do
+  mvar <- ask
+  liftIO $ do
+    state <- readMVar mvar
+    case state of
+      Idle -> internalBug "noticed state was idle when yielding"
+      Running -> return ()
+      Queued _ -> throwIO GracefulExit
 
 internalBug = error
 

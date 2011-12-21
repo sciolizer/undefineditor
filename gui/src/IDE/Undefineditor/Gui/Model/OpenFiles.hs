@@ -20,6 +20,7 @@ module IDE.Undefineditor.Gui.Model.OpenFiles (
 
 import Control.Concurrent (forkOS, threadDelay)
 import Control.Monad (unless)
+import Control.Monad.IO.Class (liftIO)
 import Data.Function (on)
 import qualified Data.Map as M (Map(), delete, empty, fromList, insert, lookup, toList)
 import qualified Data.Set as S (Set(), delete, insert, null, singleton)
@@ -80,10 +81,10 @@ newOpenFiles rvars = do
   ret <- newMRVar rvars M.empty
   let saveall = launchBackground background $ do
           -- todo: this thread should give up waiting if the application is shutting down
-          threadDelay 1000000 -- 1 second; but may be as much as 2 seconds if a yield happens
+          liftIO $ threadDelay 1000000 -- 1 second; but may be as much as 2 seconds if a yield happens
             -- todo: (not really necessary, but could be fun... add a yieldFor :: Background -> Int -> IO () function to the Background module, so that we don't end up with this weird 2 second behavior)
-          yield background
-          postGUIAsync (cleanly rvars $ saveDirtyFiles_ ret)
+          yield
+          liftIO $ postGUIAsync (cleanly rvars $ saveDirtyFiles_ ret)
   return (OpenFiles ret saveall)
 
 -- | Saves all files in the 'OpenFiles' collection that have not been saved.
