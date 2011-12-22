@@ -64,8 +64,7 @@ data UpdateAction = SetText String | CloseTab
   deriving (Eq, Ord)
 
 registerNameUpdater notebook widget name = do
-  rvars <- newRVars
-  finished <- newRVarIO rvars False
+  finished <- (`newRVarIO` False) =<< newRVars
   let reactee = do
         fin <- readRVar finished
         if fin then return Nothing else (Just . maybe CloseTab SetText) `fmap` name
@@ -77,7 +76,7 @@ registerNameUpdater notebook widget name = do
         case mbNum of
           Nothing -> putStrLn "todo: trying to remove widget from notebook more than once; this probably indicates a space leak"
           Just i -> notebookRemovePage notebook i
-        cleanly rvars . atomically . writeRVar finished $ True -- unregister handler so that widget can be garbage collected
+        cleanlyWriteRVar finished True -- unregister handler so that widget can be garbage collected
   case ret of
     Nothing -> return Nothing
     Just CloseTab -> return Nothing

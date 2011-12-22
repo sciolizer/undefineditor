@@ -60,7 +60,10 @@ module IDE.Undefineditor.Gui.Controller.Reactive (
 
   -- * Controlling effects
   react,
-  cleanly
+  cleanly,
+
+  -- * Convenience functions
+  cleanlyWriteRVar
 ) where
 
 import Control.Applicative (Applicative)
@@ -228,3 +231,7 @@ mkChangingAction oldValue newValueMaker action_ inst = do
 
 type Effect = STM (IO ()) -- it returns a DIFFERENT IO action each time... each time you invoke this, you discard a new 'old value'
 type UntypedRVar = Unique -> Effect -> STM () -- just the function which installs effects
+
+-- | Assigns the given value to the given rvar and fires all related side effects.
+cleanlyWriteRVar :: RVar a -> a -> IO ()
+cleanlyWriteRVar r@(RVar rs _ _) v = cleanly rs . atomically . writeRVar r $ v
