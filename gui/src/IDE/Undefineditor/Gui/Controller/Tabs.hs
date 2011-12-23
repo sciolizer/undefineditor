@@ -22,7 +22,6 @@ import Control.Monad (foldM)
 import Data.List (find, isSuffixOf, tails)
 import Data.Maybe (fromMaybe)
 import Graphics.UI.Gtk (Notebook(), notebookSetCurrentPage, notebookRemovePage, on, switchPage)
-import Graphics.UI.Gtk.SourceView (SourceView())
 import System.FilePath (joinPath, splitPath)
 
 import IDE.Undefineditor.Gui.Controller.MRVar
@@ -35,7 +34,7 @@ import IDE.Undefineditor.Gui.View.Notebook
 -- todo: figure out how to get rid of this file. It's turning into a big ball of mud. I think I created this file back before the 'cleanly' function existed... with the existence of the 'cleanly' function, I might be able to go back to a controller-free management of the tabs. But be careful. There's definitely a lot of complexity here.
 
 -- | Collection of tabs in a window.
-data Tabs = Tabs OpenFiles Notebook (MRVar (FM.FocusedMap FilePath (FileId, SourceView))) (forall a. IO a -> IO a)
+data Tabs = Tabs OpenFiles Notebook (MRVar (FM.FocusedMap FilePath (FileId, HaskellTab))) (forall a. IO a -> IO a)
 
 data FocusSync = Paused | Going
 
@@ -79,7 +78,7 @@ openTabFile (Tabs o n mvar paused) fp = modifyMRVar_ mvar $ \fm ->
           rec
             let fm' = FM.insert fp (fid, editorTab) fm
             let Just i = FM.locateIndex fp fm'
-            editorTab <- paused $ newTab n i tb tabname
+            editorTab <- paused $ newHaskellTab n i tb (getMRVars mvar) tabname
             return ()
           -- sync point
           paused $ do
@@ -89,7 +88,7 @@ openTabFile (Tabs o n mvar paused) fp = modifyMRVar_ mvar $ \fm ->
 paused fs = bracket_ (modifyMVar_ fs (\_ -> return Paused)) (modifyMVar_ fs (\_ -> return Going))
 
 -- | Returns the current tab and associated file, or Nothing if the tab collection is empty.
-getCurrentTab :: Tabs -> IO (Maybe (FileId, SourceView))
+getCurrentTab :: Tabs -> IO (Maybe (FileId, HaskellTab))
 getCurrentTab (Tabs _ _ mvar _) = do
   fm <- atomically . peekStream . readMRVar $ mvar
   case FM.lookupFocus fm of

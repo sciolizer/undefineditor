@@ -4,17 +4,21 @@
 
 -- | Convenience functions for dealing with Gtk 'Notebook's.
 module IDE.Undefineditor.Gui.View.Notebook (
-  newTab
+  HaskellTab(),
+  newHaskellTab,
+  haskellTabSourceView,
+  haskellTabFindBar
   -- newSearchModuleTab
 ) where
 
-import Control.Concurrent.STM (atomically)
 import Control.Monad (unless)
 import Graphics.UI.Gtk (
   AttrOp((:=)),
   NotebookClass(),
+  Packing(PackGrow, PackNatural),
   PolicyType(PolicyNever),
   WrapMode(WrapChar),
+  boxPackStart,
   containerAdd,
   notebookInsertPage,
   notebookPageNum,
@@ -25,6 +29,9 @@ import Graphics.UI.Gtk (
   scrolledWindowNew,
   set,
   textViewWrapMode,
+  toTextView,
+  vBoxNew,
+  widgetHide,
   widgetShow
   )
 import Graphics.UI.Gtk.SourceView (
@@ -35,16 +42,25 @@ import Graphics.UI.Gtk.SourceView (
   )
 
 import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Gui.View.FindBar
 
--- | Constructs a new tab.
-newTab
+-- | Haskell tabs are tabs for editing *.hs and *.lhs files. They consist of a source view and a find bar.
+data HaskellTab = HaskellTab {
+  -- | Returns the 'SourceView' used for editing the contents of the file.
+  haskellTabSourceView :: SourceView,
+  -- | Returns the 'FindBar' appearing at the bottom of the tab page contents.
+  haskellTabFindBar :: FindBar }
+
+-- | Constructs a new tab for editing haskell.
+newHaskellTab
   :: NotebookClass self
   => self -- ^ 'Notebook' to add tab to.
   -> Int -- ^ Index at which to insert tab.
   -> SourceBuffer -- ^ Editor to put in body of notebook page.
+  -> RVars
   -> Stream (Maybe String) -- ^ Name of the tab. 'Nothing' indicates file has been deleted or closed.
-  -> IO SourceView
-newTab notebook whence buffer tabName = do
+  -> IO HaskellTab
+newHaskellTab notebook whence buffer rvars tabName = do
   scrolledWindow <- scrolledWindowNew Nothing Nothing
   set scrolledWindow [scrolledWindowHscrollbarPolicy := PolicyNever]
   sourceView <- sourceViewNewWithBuffer buffer
@@ -52,19 +68,25 @@ newTab notebook whence buffer tabName = do
   containerAdd scrolledWindow sourceView
   widgetShow scrolledWindow -- still haven't figured when widgetShow is and is not necessary
   widgetShow sourceView
-  tabName <- registerNameUpdater notebook scrolledWindow tabName
+  vbox <- vBoxNew False 0
+  tabName <- registerNameUpdater rvars notebook vbox tabName
+  fb <- newFindBar rvars (toTextView sourceView)
+  widgetHide (findBarWidget fb)
   case tabName of
-    Nothing -> return sourceView -- file was closed or deleted; don't insert tab into notebook
+    Nothing -> return (HaskellTab sourceView fb) -- file was closed or deleted; don't insert tab into notebook
     Just str -> do
-      notebookInsertPage notebook scrolledWindow str whence
-      notebookSetTabReorderable notebook scrolledWindow False
-      return sourceView
+      boxPackStart vbox scrolledWindow PackGrow 0
+      boxPackStart vbox (findBarWidget fb) PackNatural 0
+      notebookInsertPage notebook vbox str whence
+      notebookSetTabReorderable notebook vbox False
+      widgetShow vbox
+      return (HaskellTab sourceView fb)
 
 data UpdateAction = SetText String | CloseTab
   deriving (Eq, Ord)
 
-registerNameUpdater notebook widget name = do
-  finished <- (`newRVarIO` False) =<< newRVars
+registerNameUpdater rvars notebook widget name = do
+  finished <- newRVarIO rvars False
   let reactee = do
         fin <- readRVar finished
         if fin then return Nothing else (Just . maybe CloseTab SetText) `fmap` name

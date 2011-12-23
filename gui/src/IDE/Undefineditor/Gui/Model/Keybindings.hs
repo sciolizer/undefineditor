@@ -1,5 +1,7 @@
 {-# LANGUAGE
- NoMonomorphismRestriction
+ FlexibleInstances,
+ NoMonomorphismRestriction,
+ TypeSynonymInstances
  #-}
 
 -- | Manages keybindings.
@@ -12,12 +14,14 @@ module IDE.Undefineditor.Gui.Model.Keybindings (
   showKeybinding
 ) where
 
+import Control.Monad (when)
 import Control.Monad.Trans.Writer (Writer(), execWriter, tell)
 import Data.Function (on)
 import Data.List (intercalate)
 import qualified Data.Map as M (Map(), empty, insertWithKey', lookup)
-import qualified Data.Set as S (Set(), singleton, toAscList)
-import Graphics.UI.Gtk (KeyVal(), Modifier(Control), keyFromName, keyName)
+import Data.Maybe (isNothing)
+import qualified Data.Set as S (Set(), empty, insert, singleton, toAscList)
+import Graphics.UI.Gtk (KeyVal(), Modifier(Control, Shift), keyFromName, keyName)
 
 import IDE.Undefineditor.Gui.Controller.Reactive
 import IDE.Undefineditor.Gui.Model.Activations
@@ -34,7 +38,12 @@ newKeybindings = return Keybindings
 
 -- | Looks up the activation associated with a keyboard shortcut.
 getActivation :: Keybindings -> Shortcut -> IO (Maybe Activation)
-getActivation _kb shortcut = return $ M.lookup shortcut (snd keyBindings)
+getActivation _kb shortcut = do
+  let ret = M.lookup shortcut (snd keyBindings)
+  when (isNothing ret) $ do
+    -- putStrLn $ "unrecognized keybinding: " ++ showKeybinding shortcut
+    return ()
+  return ret
 
 -- | Looks up the shortcut associated with an activation.
 getKeybinding :: Keybindings -> Activation -> Stream (Maybe Shortcut)
@@ -46,13 +55,19 @@ type Shortcut = (S.Set Modifier, KeyVal)
 keyBindings :: (M.Map Activation Shortcut, M.Map Shortcut Activation)
 keyBindings = canonicalize $ do
   AFind =: (Control & "f")
+  AEscape =: unmodified "Escape"
+  AFindNext =: (Control & "g")
+  AFindPrevious =: (Control & Shift & "G") -- interesting how I have to use capital g
   ANew =: Control & "n"
   ASaveAll =: Control & "s"
   ASelectCurrentIdentifier =: Control & "w"
   AFindOccurences =: Control & "b"
 
-infixl 6 &
-x & y = (S.singleton x, keyFromName y)
+infixr 6 &
+class MakesShortcut a where (&) :: Modifier -> a -> Shortcut
+instance MakesShortcut String where x & y = (S.singleton x, keyFromName y)
+instance MakesShortcut Shortcut where mod & (mods, k) = (S.insert mod mods, k) where
+unmodified name = (S.empty, keyFromName name)
 
 infixl 5 =:
 (=:) :: Activation -> Shortcut -> Writer [(Activation, Shortcut)] ()

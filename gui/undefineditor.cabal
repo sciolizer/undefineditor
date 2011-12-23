@@ -56,6 +56,7 @@ Library
                    IDE.Undefineditor.Gui.Model.OpenFiles
                    IDE.Undefineditor.Gui.Util.ModalComboBox
                    IDE.Undefineditor.Gui.Util.TextBuffer
+                   IDE.Undefineditor.Gui.View.FindBar
                    IDE.Undefineditor.Gui.View.Menu
                    IDE.Undefineditor.Gui.View.Notebook
                    IDE.Undefineditor.Gui.View.Window

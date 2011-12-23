@@ -48,6 +48,8 @@ menuTemplate = do
     stock "gtk-copy" ACopy
     stock "gtk-paste" APaste
     stock "gtk-find" AFind
+    child "Find _Next" AFindNext
+    child "Find _Previous" AFindPrevious
   parent "_Run" (return ())
   parent "_Tools" $ do
     child "_Hoogle" AHoogle

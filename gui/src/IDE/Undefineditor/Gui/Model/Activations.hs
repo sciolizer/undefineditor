@@ -23,7 +23,9 @@ data Activation =
   | ACut -- ^ Cut text from currently active buffer.
   | ACopy -- ^ Copy text from currently active buffer.
   | APaste -- ^ Paste text into the currently active buffer.
-  | AFind -- ^ Find a substring in the currently active buffer.
+  | AFind -- ^ Displays the find bar.
+  | AFindNext -- ^ Selects the next occurence of the query in the find bar.
+  | AFindPrevious -- ^ Selects the previous occurence of the query in the find bar.
   | AHoogle -- ^ Launch hoogle.
   | ARearrangeImports -- ^ Re-arrange imports in the currently active buffer.
   | ATabNext -- ^ Switch to the next tab.
@@ -35,4 +37,5 @@ data Activation =
   | AFindUsages -- ^ Create a new window with all usages of the identifier under the cursor.
   | ASelectCurrentIdentifier -- ^ Highlight the current identifier.
   | AFindOccurences -- ^ Find all occurences of the identifier under the cursor. This is a temporary action, until I get 'AGoToDefinition' working properly.
+  | AEscape -- ^ Triggered when the user presses escape. Hides the find bar, and possibly other things.
   deriving (Bounded, Enum, Eq, Ord, Read, Show)

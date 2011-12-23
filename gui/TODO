@@ -148,3 +148,5 @@ should be a keyboard shortcut for "include this function in the export list"
 Why did I develop the habit of using explicit imports? I think it was to decrease
 the frequency of recompilation... and if that's the case, then I might as well be doing it
 for the internal imports as well as the other package imports.
+
+Ctrl+w doesn't work when a cursor is at the END of an identifier

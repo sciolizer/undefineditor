@@ -65,7 +65,9 @@ import IDE.Undefineditor.Gui.Model.Keybindings
 import IDE.Undefineditor.Gui.Model.OpenFiles
 import IDE.Undefineditor.Gui.Util.ModalComboBox
 import IDE.Undefineditor.Gui.Util.TextBuffer
+import IDE.Undefineditor.Gui.View.FindBar
 import IDE.Undefineditor.Gui.View.Menu
+import IDE.Undefineditor.Gui.View.Notebook
 
 -- | Initializes gtk and creates a new window.
 main :: IO ()
@@ -119,21 +121,8 @@ mkWindow = do
   notebook <- notebookNew
   boxPackStart vbox menuBar PackNatural 0
   boxPackStart vbox notebook PackGrow 0
-  -- boxPackStart vbox findBox PackNatural 0
   containerAdd window vbox
   return (window, menuBar, notebook)
-
-{-
-mkFindBox = do
-  findBox <- hBoxNew False 0
-  entry <- entryNew
-  prev <- buttonNewWithLabel "Prev"
-  next <- buttonNewWithLabel "Next"
-  boxPackStart findBox entry PackGrow 0
-  boxPackStart findBox prev PackNatural 0
-  boxPackStart findBox next PackNatural 0
-  return findBox
-  -}
 
 data Tab = TabFile String | TabOpenModule
   deriving (Eq, Ord) -- todo: replace Ord instance with a better one
@@ -156,7 +145,10 @@ actions window rvars openFiles tabs activation = ret where
     ACut -> return ()
     ACopy -> return ()
     APaste -> return ()
-    AFind -> return () -- textIterForwardSearch and textIterBackwardSearch will probably be useful functions for this
+    AEscape -> withCurrentTab tabs $ \fid ht -> hideFindBar (haskellTabFindBar ht)
+    AFind -> withCurrentTab tabs $ \fid ht -> focusFindBar (haskellTabFindBar ht)
+    AFindNext -> withCurrentTab tabs $ \fid ht -> findNext (haskellTabFindBar ht)
+    AFindPrevious -> withCurrentTab tabs $ \fid ht -> findPrevious (haskellTabFindBar ht)
     AHoogle -> return ()
     ARearrangeImports -> return ()
     ATabNext -> cleanly rvars $ nextTab tabs
@@ -166,15 +158,16 @@ actions window rvars openFiles tabs activation = ret where
     AGoToDefinition -> putStrLn "go to definition not implemented"
     AGoToUsage -> return ()
     AFindUsages -> return ()
-    ASelectCurrentIdentifier -> withCurrentTab tabs $ \_fid sourceView -> do
-      (tb, contents, co) <- getBufferContentsAndOffset sourceView
+    ASelectCurrentIdentifier -> withCurrentTab tabs $ \_fid haskellTab -> do
+      (tb, contents, co) <- getBufferContentsAndOffset (haskellTabSourceView haskellTab)
       mbLexeme <- getLexeme contents co
       case mbLexeme of
         Nothing -> putStrLn "no identifier underneath cursor"
         Just (_, start, limit) -> do
           [stIter, limIter] <- mapM (textBufferGetIterAtOffset tb) [start, limit]
           textBufferSelectRange tb stIter limIter
-    AFindOccurences -> withCurrentTab tabs $ \fid sourceView -> do
+    AFindOccurences -> withCurrentTab tabs $ \fid haskellTab -> do
+      let sourceView = haskellTabSourceView haskellTab
       (tb, contents, co) <- getBufferContentsAndOffset sourceView
       mbLocs <- definitionCandidates (getFilePath fid) contents co
       case mbLocs of
@@ -223,12 +216,12 @@ jumpTo offset sourceView tb = do
 textBufferGetInsertOffset tb =
   textIterGetOffset =<< textBufferGetIterAtMark tb =<< textBufferGetInsert tb
 
-withCurrentTab :: Tabs -> (FileId -> SourceView -> IO ()) -> IO ()
+withCurrentTab :: Tabs -> (FileId -> HaskellTab -> IO ()) -> IO ()
 withCurrentTab tabs act = do
   mbTb <- getCurrentTab tabs
   case mbTb of
     Nothing -> return ()
-    Just (fid, sourceView) -> act fid sourceView
+    Just (fid, tab) -> act fid tab
 
 fileDialog = do
   dialog <- fileChooserDialogNew Nothing Nothing FileChooserActionOpen [("gtk-open", ResponseAccept), ("gtk-cancel", ResponseCancel)]
