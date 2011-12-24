@@ -87,7 +87,7 @@ newFindBar rvars tv = do
   tb <- textViewGetBuffer tv
   tag <- newHighlightTag tb
   let ret = FindBar rvar (toWidget findBox) entry tv tag
-  react (Just `fmap` findBarQuery ret) $ \old new -> unless (old == new) $ highlightAll ret new
+  reactIO (Just `fmap` findBarQuery ret) $ \old new -> unless (old == new) $ highlightAll ret new
   return ret
 
 highlightAll fb new = do

@@ -150,3 +150,11 @@ the frequency of recompilation... and if that's the case, then I might as well b
 for the internal imports as well as the other package imports.
 
 Ctrl+w doesn't work when a cursor is at the END of an identifier
+
+Need a keyboard shortcut for jumping to a particular line and column.
+
+Comments do not extend from line to line: if my cursor is at the end of a line beginning with "--", and I press ENTER, the next line is blank instead of also starting with two dashes.
+
+Just realized that monospaced fonts is pretty dang better than proportional fonts for editing haskell (regretably)... when doing a recursive let binding, such as in a do block, it's really hard to get it right if you're using proportional fonts. So the todo here is: switch to a monospaced font
+
+Tab and Shift+Tab while a block of text is selected should indent and unindent

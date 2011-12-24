@@ -90,7 +90,7 @@ registerNameUpdater rvars notebook widget name = do
   let reactee = do
         fin <- readRVar finished
         if fin then return Nothing else (Just . maybe CloseTab SetText) `fmap` name
-  ret <- react reactee $ \o n -> unless (o == n) $
+  ret <- reactIO reactee $ \o n -> unless (o == n) $
     case n of
       SetText s -> notebookSetTabLabelText notebook widget s
       CloseTab -> do

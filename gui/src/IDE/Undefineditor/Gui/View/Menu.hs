@@ -87,7 +87,7 @@ child label activation = do
 menuItemNewWithRReadMnemonic :: Stream String -> IO MenuItem
 menuItemNewWithRReadMnemonic str = do
   rec
-    Just initialStr <- react (Just `fmap` str) $ \old new ->
+    Just initialStr <- reactIO (Just `fmap` str) $ \old new ->
       unless (old == new) $ labelSetTextWithMnemonic label new
     label <- labelNewWithMnemonic initialStr
   mi <- menuItemNew
