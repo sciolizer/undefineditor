@@ -25,7 +25,7 @@ import Graphics.UI.Gtk (Notebook(), notebookSetCurrentPage, notebookRemovePage, 
 import System.FilePath (joinPath, splitPath)
 
 import IDE.Undefineditor.Gui.Controller.MRVar
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 import qualified IDE.Undefineditor.Gui.Model.FocusedMap as FM
 import IDE.Undefineditor.Gui.Model.OpenFiles
 import IDE.Undefineditor.Gui.View.Notebook

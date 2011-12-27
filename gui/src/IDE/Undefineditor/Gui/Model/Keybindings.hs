@@ -23,7 +23,7 @@ import Data.Maybe (isNothing)
 import qualified Data.Set as S (Set(), empty, insert, singleton, toAscList)
 import Graphics.UI.Gtk (KeyVal(), Modifier(Control, Shift), keyFromName, keyName)
 
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 import IDE.Undefineditor.Gui.Model.Activations
 
 -- who creates an Enum instance without creating an Ord instance???

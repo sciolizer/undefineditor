@@ -48,9 +48,15 @@ Library
 
   -- Modules exported by the library.
   Exposed-modules: IDE.Undefineditor.Definition
+                   IDE.Undefineditor.Util.Reactive
+                   IDE.Undefineditor.Util.ReentrantLock
+                   IDE.Undefineditor.Util.Safe
   
   -- Packages needed in order to build this package.
-  Build-depends: base
+  Build-depends: base,
+                 containers >= 0.4.0.0 && < 0.5,
+                 stm >= 2.2.0.1 && < 2.3,
+                 transformers >= 0.2.2.0 && < 0.3
   
   -- Modules not exported by this package.
   -- Other-modules:       

@@ -39,7 +39,7 @@
 -- >  -- and put the concatenation of the two textboxes into the label.
 -- >  let concatenation = liftM2 (++) (readRVar lrvar) (readRVar rrvar)
 -- >  react (Just `fmap` concatenation) (\old new -> unless (old == new) $ set label [labelText := new])
-module IDE.Undefineditor.Gui.Controller.Reactive (
+module IDE.Undefineditor.Util.Reactive (
 
   -- * 'RVars' and 'RVar's
   RVars(),

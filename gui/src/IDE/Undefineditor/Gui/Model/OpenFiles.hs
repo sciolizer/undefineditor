@@ -38,7 +38,7 @@ import Graphics.UI.Gtk.SourceView (
 import IDE.Undefineditor.Gui.Concurrent.Background
 import IDE.Undefineditor.Gui.Concurrent.FileWatch
 import IDE.Undefineditor.Gui.Controller.MRVar
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 import IDE.Undefineditor.Gui.Util.TextBuffer
 
 -- | Whether a file has been modified since it's last save.

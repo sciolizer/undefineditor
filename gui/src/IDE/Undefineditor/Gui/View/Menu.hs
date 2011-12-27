@@ -31,7 +31,7 @@ import Graphics.UI.Gtk (
   menuShellAppend,
   on)
 
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 import IDE.Undefineditor.Gui.Model.Activations
 import IDE.Undefineditor.Gui.Model.Keybindings
 

@@ -12,7 +12,7 @@ module IDE.Undefineditor.Gui.Controller.MRVar (
 import Control.Concurrent.MVar (MVar(), modifyMVar, modifyMVar_, newMVar)
 import Control.Concurrent.STM (atomically)
 
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 
 -- | An 'MVar' and an 'RVar'.
 data MRVar a = MRVar (MVar a) (RVar a)

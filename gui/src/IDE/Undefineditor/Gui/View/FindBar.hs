@@ -61,7 +61,7 @@ import Graphics.UI.Gtk (
   widgetShow
   )
 
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 
 -- | A quick-find bar bound to some text view.
 data FindBar = FindBar {

@@ -41,7 +41,7 @@ import Graphics.UI.Gtk.SourceView (
   sourceViewShowLineNumbers
   )
 
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 import IDE.Undefineditor.Gui.View.FindBar
 
 -- | Haskell tabs are tabs for editing *.hs and *.lhs files. They consist of a source view and a find bar.

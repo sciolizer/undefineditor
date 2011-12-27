@@ -158,3 +158,29 @@ Comments do not extend from line to line: if my cursor is at the end of a line b
 Just realized that monospaced fonts is pretty dang better than proportional fonts for editing haskell (regretably)... when doing a recursive let binding, such as in a do block, it's really hard to get it right if you're using proportional fonts. So the todo here is: switch to a monospaced font
 
 Tab and Shift+Tab while a block of text is selected should indent and unindent
+
+IDE should detect when there are inconsistencies between the module name and the file path. If it detects an inconsistency,
+it should make a scribble with two options: one which will move the file, the other which will
+modify the module name. If there are multiple valid moves or multiple valie module name renames, then all of the
+options will be presented, maybe.
+
+When return to this, focus on the interface which dis-ambiguates the root folder (when no disambiguation can be determined automatically)
+
+oh, I guess I'll have to get Interface to compile first (but that shouldn't be hard)
+
+can think about creating a Stateless interface to go along with the Stateful interface
+
+Once have the dropdown disambuator implemented, I can go back to making the automatic disambiguator better OR... I can focus on implementing the "File > Open" feature that I've been wanting for so long.
+
+Need to change Reactive to remove old subscriptions on re-execution. Currently we are only removing subscriptions
+when the stream terminates. See step 3 in http://knockoutjs.com/documentation/computedObservables.html
+
+Shortcut key that says "jump to this definition, but in a separate/split window".
+The idea being... I want to be able to look at both the caller and the callee at the same time.
+
+
+Just realized... instead of doing the levenshtein difference on tabs, I can create an
+"RVar ([change], [FilePath])" where change is stuff like adds and removes... although, I need
+to be concerned about writes squashing earlier writes... hmm, maybe I would need a special type
+for this after all.
+Anyway, the OpenFiles approach seems to be working fine for now. I'll stave off RDiffVar until later.

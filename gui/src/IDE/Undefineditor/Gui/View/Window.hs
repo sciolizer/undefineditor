@@ -58,7 +58,7 @@ import Graphics.UI.Gtk (
 import Graphics.UI.Gtk.SourceView (SourceView())
 
 import IDE.Undefineditor.Definition
-import IDE.Undefineditor.Gui.Controller.Reactive
+import IDE.Undefineditor.Util.Reactive
 import IDE.Undefineditor.Gui.Controller.Tabs
 import IDE.Undefineditor.Gui.Model.Activations
 import IDE.Undefineditor.Gui.Model.Keybindings

@@ -1,5 +1,6 @@
+sudo apt-get install libglib2.0-dev libgtk2.0-dev libgtksourceview2.0-dev
 cd lib
 cabal install
 cd ../gui
-cabal install
+cabal install --haddock-executables
 $HOME/.cabal/bin/undefineditor
