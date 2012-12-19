@@ -26,9 +26,9 @@ drawAll wn tw = do
   cursorLoc <- TW.render tw twSquare
   case cursorLoc of
     Just (r,c) -> do
-      setEcho True
+      setCursorMode CursorVisible
       updateWindow wn $ moveCursorSquare twSquare r c
-    Nothing -> setEcho False
+    Nothing -> void $ setCursorMode CursorInvisible
   render
   
 -- waitFor :: Window -> Curses [Event]

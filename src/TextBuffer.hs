@@ -24,7 +24,6 @@ portalify (Buffer lz, cols) portalRow = drop portalRow ret where
       (left, right) -> ((ov, left) : chunk True right)
 
 upward, downward, leftward, rightward :: WidthBuffer -> FileCoord -> FileCoord
-upward _ (0, _) = (0, 0)
 upward (Buffer lz, cols) (r,c) = z where
   r' = r - 1
   z = case lz `at` r of
@@ -32,10 +31,11 @@ upward (Buffer lz, cols) (r,c) = z where
         Just _ ->
           if c - cols < 0
             then case lz `at` r' of
-                   Nothing -> error $ "no line found at " ++ show r'
+                   Nothing -> (0, 0)
                    Just line' ->
-                     let l = length line' in
-                     (r', min l (last [c,(c+cols)..l]))
+                     let l = length line'
+                         c' = if l < c then l else last [c,(c+cols)..l] in
+                     (r', c')
             else (r, c - cols)
 downward (Buffer lz, cols) (r,c) = z where
   fileEnd = (size lz - 1, length (final lz))
@@ -54,14 +54,16 @@ leftward (Buffer lz, _) (r,0) =
   let r' = r - 1 in
   case lz `at` r' of
     Nothing -> error $ "no line found at " ++ show r'
-    Just line -> (r, length line)
+    Just line -> (r', length line)
 leftward _ (r,c) = (r, c - 1)
 rightward (Buffer lz, _) (r,c) =
   case lz `at` r of
-    Nothing -> (size lz - 1, length (final lz))
+    Nothing -> case size lz of
+                 0 -> (0, 0)
+                 s -> (s - 1, length (final lz))
     Just line ->
-      if c > length line
-        then (r + 1, 0)
+      if c >= length line
+        then if r >= size lz - 1 then (r, c) else (r + 1, 0)
         else (r, c + 1)
 
 translate :: WidthBuffer -> FileCoord -> PortalCoord
