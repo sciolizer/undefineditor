@@ -1,45 +1,35 @@
 module Main where
 
 import Control.Monad
+import Control.Monad.IO.Class
 import System.Environment
 import UI.NCurses
+
+import Square
+import qualified TextWidget as TW
 
 main = do
   [fn] <- getArgs
   contents <- readFile fn
-  runCurses $ renderFile contents
+  tw <- liftIO $ TW.newTextWidget
+  liftIO $ TW.setText tw contents
+  runCurses $ do
+    wn <- defaultWindow
+    (h,w) <- screenSize
+    let twSquare = Square 0 0 (fromInteger h) (fromInteger w)
+    cursorLoc <- TW.render tw twSquare
+    case cursorLoc of
+      Just (r,c) -> do
+        setEcho True
+        updateWindow wn $ moveCursorSquare twSquare r c
+      Nothing -> setEcho False
+    render
+    waitFor wn (TW.handleEvent tw twSquare)
 
-type M = Curses
-
-renderFile contents = do
-  w <- defaultWindow
-  (r,c) <- screenSize
-  updateWindow w $ do
-    let lines = renderBuffer (fromInteger (c - 1)) contents
-    forM_ (zip [0..(r-1)] lines) $ \(line, (overflow, content)) -> do
-      when overflow $ do
-        moveCursor line 0
-        drawString "\\"
-      moveCursor line 1
-      drawString content
-  render
-  waitFor w (\ev -> ev == EventCharacter 'q')
-
--- todo: remove rows argument; it's a lazy language after all!
-renderBuffer :: Int {- ^ columns -} -> String -> [(Bool,String)]
-renderBuffer cols str = rb False str where
-  rb _    "" = []
-  rb cont s  =
-    let lookahead = takeWhile (/= '\n') (take (cols + 1) s)
-        chunk = take cols lookahead
-        overflow = length lookahead > cols
-        todrop = length chunk + if overflow then 0 else 1 in
-    (cont, chunk) : rb overflow (drop todrop s)
-
-waitFor :: Window -> (Event -> Bool) -> Curses [Event]
-waitFor w p = loop [] where
-  loop evs = do
+-- waitFor :: Window -> Curses [Event]
+waitFor w twhe = loop where
+  loop = do
     ev <- getEvent w Nothing
     case ev of
-      Nothing -> loop evs
-      Just ev' -> if p ev' then return evs else loop (ev':evs)
+      Nothing -> loop
+      Just ev' -> if ev' == EventCharacter 'q' then return () else (twhe ev' >> loop)
