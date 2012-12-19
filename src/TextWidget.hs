@@ -48,16 +48,19 @@ render tw sq = do
                  | otherwise -> Just (r, c + 1)
 
 handleEvent :: TextWidget -> Square -> Event -> M ()
-handleEvent tw sq e =
+handleEvent tw sq e = do
+  let move rd cd = liftIO $ do
+        moveInternalCursor tw rd cd
+        scrollToCursor tw sq
   case e of
-    EventSpecialKey k ->
+    EventSpecialKey k -> do
       case k of
-        KeyDownArrow -> liftIO $ do
-          moveInternalCursor tw 1 0
-          scrollToCursor tw sq
+        KeyDownArrow -> move 1 0
+        KeyUpArrow -> move (negate 1) 0
+        KeyLeftArrow -> move 0 (negate 1)
+        KeyRightArrow -> move 0 1
         _ -> return ()
     _ -> return ()
-    
 
 splitBuffer :: Int {- ^ cursor index -} -> Int {- ^ columns -} -> String -> ([(Bool,String)], Maybe (Int, Int) {- ^ cursor -} )
 splitBuffer ci cols str = (ret,mbScrCur) where
@@ -83,9 +86,9 @@ splitBuffer ci cols str = (ret,mbScrCur) where
     continue <- consume (length ch + if overflow then 0 else 1)
     when continue (rb overflow)
 
-moveInternalCursor tw rd cd = do
+moveInternalCursor tw cols rd cd = do
   ls <- countLines tw
-  let d (r,c) = (bound (r + rd), max 0 (c + cd))
+  let d (r,c) = wrap (bound (r + rd), max 0 (c + cd))
       bound x = if x < 0 then 0 else if x > ls then ls else x
   modifyIORef (cursor tw) d
 
@@ -94,11 +97,15 @@ countLines tw = length . lines <$> getText tw
 readCursor = readIORef . cursor
 readIndex = readIORef . index
 
+{-
 cursorIndex tw = do
   (r,c) <- readCursor tw
   t <- getText tw
   let prefix = take r (lines t)
-  return (length (unlines prefix) + c)
+  let ret = length (unlines prefix) + c
+  putStrLn $ show (r,c) ++ ": " ++ show ret
+  return ret
+  -}
 
 scrollToCursor tw sq = do
   cs <- getText tw
