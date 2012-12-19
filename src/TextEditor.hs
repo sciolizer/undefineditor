@@ -14,22 +14,27 @@ main = do
   tw <- liftIO $ TW.newTextWidget
   liftIO $ TW.setText tw contents
   runCurses $ do
-    wn <- defaultWindow
     (h,w) <- screenSize
     let twSquare = Square 0 0 (fromInteger h) (fromInteger w)
-    cursorLoc <- TW.render tw twSquare
-    case cursorLoc of
-      Just (r,c) -> do
-        setEcho True
-        updateWindow wn $ moveCursorSquare twSquare r c
-      Nothing -> setEcho False
-    render
-    waitFor wn (TW.handleEvent tw twSquare)
+    wn <- defaultWindow
+    drawAll wn tw
+    waitFor wn tw (TW.handleEvent tw twSquare)
 
+drawAll wn tw = do
+  (h,w) <- screenSize
+  let twSquare = Square 0 0 (fromInteger h) (fromInteger w)
+  cursorLoc <- TW.render tw twSquare
+  case cursorLoc of
+    Just (r,c) -> do
+      setEcho True
+      updateWindow wn $ moveCursorSquare twSquare r c
+    Nothing -> setEcho False
+  render
+  
 -- waitFor :: Window -> Curses [Event]
-waitFor w twhe = loop where
+waitFor w tw twhe = loop where
   loop = do
     ev <- getEvent w Nothing
     case ev of
       Nothing -> loop
-      Just ev' -> if ev' == EventCharacter 'q' then return () else (twhe ev' >> loop)
+      Just ev' -> if ev' == EventCharacter 'q' then return () else (twhe ev' >> drawAll w tw >> loop)

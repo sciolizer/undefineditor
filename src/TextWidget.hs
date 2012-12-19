@@ -13,8 +13,8 @@ import Square
 
 data TextWidget = TextWidget {
   contents :: IORef String,
-  index :: IORef Int,
-  cursor :: IORef (Int, Int) -- not screen coordinates: are row and column in the FILE (note that column value might be larger than the length of the row
+  index :: IORef Int, -- start of viewable portion
+  cursor :: IORef (Int, Int)
   }
 
 newTextWidget :: IO TextWidget
@@ -31,18 +31,21 @@ render tw sq = do
   w <- defaultWindow
   cs <- liftIO $ getText tw
   ind <- liftIO $ readIndex tw
-  (bufRow, bufCol) <- liftIO $ readCursor tw
-  let (prefix, rest) = splitAt ind cs
-  let linesDown = bufRow - length (lines prefix)
+  crsr <- liftIO $ cursorIndex tw -- todo: change cursor to int
+  let rest = drop ind cs
   updateWindow w $ do
-    let (ls, scrCur) = splitBuffer linesDown (width sq - 1) rest
+    let (ls, scrCur) = splitBuffer (crsr - ind) (width sq - 1) rest
     forM_ (zip [0..(height sq - 1)] ls) $ \(line, (overflow, content)) -> do
       when overflow $ do
         moveCursorSquare sq line 0
         drawString "\\"
       moveCursorSquare sq line 1
       drawString content
-    return scrCur
+    return $ case scrCur of
+      Nothing -> Nothing
+      Just (r,c) | r >= height sq -> Nothing
+                 | c >= width sq -> error "splitBuffer returned invalid col"
+                 | otherwise -> Just (r, c + 1)
 
 handleEvent :: TextWidget -> Square -> Event -> M ()
 handleEvent tw sq e =
@@ -51,7 +54,7 @@ handleEvent tw sq e =
       case k of
         KeyDownArrow -> liftIO $ do
           moveInternalCursor tw 1 0
-          scrollToCursor tw
+          scrollToCursor tw sq
         _ -> return ()
     _ -> return ()
     
@@ -75,7 +78,7 @@ splitBuffer ci cols str = (ret,mbScrCur) where
     s <- peek (cols + 1)
     let lookahead = takeWhile (/= '\n') s
         ch = take cols lookahead
-        overflow = length lookahead > cols
+        overflow = length lookahead >= cols
     tell [(ov,ch)]
     continue <- consume (length ch + if overflow then 0 else 1)
     when continue (rb overflow)
@@ -91,7 +94,13 @@ countLines tw = length . lines <$> getText tw
 readCursor = readIORef . cursor
 readIndex = readIORef . index
 
-scrollToCursor tw = do
+cursorIndex tw = do
+  (r,c) <- readCursor tw
+  t <- getText tw
+  let prefix = take r (lines t)
+  return (length (unlines prefix) + c)
+
+scrollToCursor tw sq = do
   cs <- getText tw
   (r,c) <- readCursor tw
   ind <- readIndex tw
