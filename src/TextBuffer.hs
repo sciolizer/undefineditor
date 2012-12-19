@@ -15,17 +15,17 @@ type PortalCoord = (Int, Int)
 
 type WidthBuffer = (Buffer, Int {- ^ columns -})
 
-render :: WidthBuffer -> Int {- ^ portal row -} -> [(Bool, String)]
-render (Buffer lz, cols) portalRow = drop portalRow ret where
+portalify :: WidthBuffer -> Int {- ^ portal row -} -> [(Bool, String)]
+portalify (Buffer lz, cols) portalRow = drop portalRow ret where
   ret = concatMap (chunk False) (unroll lz)
   chunk ov line =
     case splitAt cols line of
       (_,"") -> [(ov, line)]
       (left, right) -> ((ov, left) : chunk True right)
 
-up, down, left, right :: WidthBuffer -> FileCoord -> FileCoord
-up _ (0, _) = (0, 0)
-up (Buffer lz, cols) (r,c) = z where
+upward, downward, leftward, rightward :: WidthBuffer -> FileCoord -> FileCoord
+upward _ (0, _) = (0, 0)
+upward (Buffer lz, cols) (r,c) = z where
   r' = r - 1
   z = case lz `at` r of
         Nothing -> (size lz - 1, 0)
@@ -37,7 +37,7 @@ up (Buffer lz, cols) (r,c) = z where
                      let l = length line' in
                      (r', min l (last [c,(c+cols)..l]))
             else (r, c - cols)
-down (Buffer lz, cols) (r,c) = z where
+downward (Buffer lz, cols) (r,c) = z where
   fileEnd = (size lz - 1, length (final lz))
   r' = r + 1
   z = case lz `at` r of
@@ -49,14 +49,14 @@ down (Buffer lz, cols) (r,c) = z where
             else case lz `at` r' of
                    Nothing -> fileEnd
                    Just line' -> (r', min (length line') c)
-left _ (0,0) = (0,0)
-left (Buffer lz, _) (r,0) =
+leftward _ (0,0) = (0,0)
+leftward (Buffer lz, _) (r,0) =
   let r' = r - 1 in
   case lz `at` r' of
     Nothing -> error $ "no line found at " ++ show r'
     Just line -> (r, length line)
-left _ (r,c) = (r, c - 1)
-right (Buffer lz, _) (r,c) =
+leftward _ (r,c) = (r, c - 1)
+rightward (Buffer lz, _) (r,c) =
   case lz `at` r of
     Nothing -> (size lz - 1, length (final lz))
     Just line ->

@@ -10,47 +10,52 @@ import Data.IORef
 import UI.NCurses
 
 import Square
+import TextBuffer
 
 data TextWidget = TextWidget {
-  contents :: IORef String,
-  index :: IORef Int, -- start of viewable portion
-  cursor :: IORef (Int, Int)
+  buffer :: IORef Buffer,
+  portalTop :: IORef (Int, Int), -- start of viewable portion
+  fileCoord :: IORef (Int, Int)
   }
 
 newTextWidget :: IO TextWidget
-newTextWidget = TextWidget <$> newIORef "" <*> newIORef 0 <*> newIORef (0,0)
+newTextWidget = TextWidget <$> newIORef (fromString "") <*> newIORef (0,0) <*> newIORef (0,0)
 
 getText :: TextWidget -> IO String
-getText = readIORef . contents
+getText tw = toString <$> readIORef (buffer tw)
 
 setText :: TextWidget -> String -> IO ()
-setText tw newc = writeIORef (contents tw) newc
+setText tw newc = writeIORef (buffer tw) (fromString newc)
 
 render :: TextWidget -> Square -> M (Maybe (Int, Int)) {- ^ row, col for cursor, relative to square -}
 render tw sq = do
   w <- defaultWindow
-  cs <- liftIO $ getText tw
-  ind <- liftIO $ readIndex tw
-  crsr <- liftIO $ cursorIndex tw -- todo: change cursor to int
-  let rest = drop ind cs
+  buf <- liftIO $ readBuffer tw
+  t <- liftIO $ readPortalTop tw
+  crsr <- liftIO $ readFileCoord tw
   updateWindow w $ do
-    let (ls, scrCur) = splitBuffer (crsr - ind) (width sq - 1) rest
+    let wbuf = (buf, columns sq)
+        (portalRow,_) = translate wbuf t
+        ls = portalify wbuf portalRow
+        scrCur = translate wbuf crsr
     forM_ (zip [0..(height sq - 1)] ls) $ \(line, (overflow, content)) -> do
       when overflow $ do
         moveCursorSquare sq line 0
         drawString "\\"
       moveCursorSquare sq line 1
       drawString content
-    return $ case scrCur of
-      Nothing -> Nothing
-      Just (r,c) | r >= height sq -> Nothing
-                 | c >= width sq -> error "splitBuffer returned invalid col"
-                 | otherwise -> Just (r, c + 1)
+    return $
+      let (r,c) = scrCur
+          r' = r - portalRow in
+      case r' of
+        z | z < 0 || z > height sq -> Nothing
+          | c >= width sq -> error "splitBuffer returned invalid col"
+          | otherwise -> Just (r', c + 1)
 
 handleEvent :: TextWidget -> Square -> Event -> M ()
 handleEvent tw sq e = do
   let move rd cd = liftIO $ do
-        moveInternalCursor tw rd cd
+        moveInternalCursor tw (columns sq) rd cd
         scrollToCursor tw sq
   case e of
     EventSpecialKey k -> do
@@ -62,6 +67,7 @@ handleEvent tw sq e = do
         _ -> return ()
     _ -> return ()
 
+{-
 splitBuffer :: Int {- ^ cursor index -} -> Int {- ^ columns -} -> String -> ([(Bool,String)], Maybe (Int, Int) {- ^ cursor -} )
 splitBuffer ci cols str = (ret,mbScrCur) where
   -- state: (String left, Int linesMade, Int charsConsumed, Maybe (Int, Int) screen cursor)
@@ -85,17 +91,26 @@ splitBuffer ci cols str = (ret,mbScrCur) where
     tell [(ov,ch)]
     continue <- consume (length ch + if overflow then 0 else 1)
     when continue (rb overflow)
+    -}
 
-moveInternalCursor tw cols rd cd = do
-  ls <- countLines tw
-  let d (r,c) = wrap (bound (r + rd), max 0 (c + cd))
-      bound x = if x < 0 then 0 else if x > ls then ls else x
-  modifyIORef (cursor tw) d
+moveInternalCursor tw cols rd cd = z where
+  z = do
+    buf <- readBuffer tw
+    let wb = (buf, cols)
+    fc <- readFileCoord tw
+    let fc' = adjust wb fc rd cd
+    writeIORef (fileCoord tw) fc'
+  adjust wb fc x 0 | x < 0 = adjust wb (leftward wb fc) (x + 1) 0
+                   | x == 0 = fc
+                   | otherwise = adjust wb (rightward wb fc) (x - 1) 0
+  adjust wb fc x y | y < 0 = adjust wb (upward wb fc) x (y + 1)
+                   | otherwise = adjust wb (downward wb fc) x (y - 1)
 
 countLines tw = length . lines <$> getText tw
 
-readCursor = readIORef . cursor
-readIndex = readIORef . index
+readFileCoord = readIORef . fileCoord
+readPortalTop = readIORef . portalTop
+readBuffer = readIORef . buffer
 
 {-
 cursorIndex tw = do
@@ -107,11 +122,18 @@ cursorIndex tw = do
   return ret
   -}
 
+columns sq = width sq - 1
+
 scrollToCursor tw sq = do
-  cs <- getText tw
-  (r,c) <- readCursor tw
-  ind <- readIndex tw
-  let prefix = take ind cs
-  if r < length (lines prefix)
-    then writeIORef (index tw) . length . unlines . take r . lines $ cs
-    else return () -- todo
+  let cols = columns sq
+  buf <- readBuffer tw
+  fileCoord <- readFileCoord tw
+  t <- readPortalTop tw
+  let wb = (buf, cols)
+  let (r,c) = translate wb fileCoord
+  let (pt,_) = translate wb t
+  if r < pt
+    then writeIORef (portalTop tw) (r,0) -- todo: replace zero with proper value
+    else if r >= pt + height sq
+           then writeIORef (portalTop tw) (r - height sq, 0) -- todo: fix zero AND fix r - height which assumes portal and file heights are the same
+           else return ()
