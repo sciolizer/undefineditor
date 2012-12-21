@@ -119,6 +119,9 @@ at (ListZipper before after) i = z where
   z | i < lb = before !! (lb - i - 1)
     | otherwise = after !! (i - lb)
 
+line :: Buffer -> Int -> Maybe String
+line (Buffer lz) i = lz `at` i
+
 (!!) :: [a] -> Int -> Maybe a
 _ !! i | i < 0 = error "negative index on !!"
 xs !! i = find i xs where

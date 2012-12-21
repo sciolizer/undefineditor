@@ -79,6 +79,12 @@ handleEvent tw sq e = liftIO $ do
         KeyBackspace -> backspace
         KeyEnter -> newline
         KeyHome -> modifyIORef (fileCoord tw) (\(r,_) -> (r, 0))
+        KeyEnd -> do
+          buf <- readBuffer tw
+          (r,_) <- readFileCoord tw
+          case buf `line` r of
+            Nothing -> return ()
+            Just l -> writeIORef (fileCoord tw) (r, length l)
         _ -> return ()
     EventCharacter '\b' -> backspace
     EventCharacter '\n' -> newline
