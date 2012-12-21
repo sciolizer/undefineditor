@@ -14,11 +14,11 @@ import TextBuffer
 data TextWidget = TextWidget {
   buffer :: IORef Buffer,
   portalTop :: IORef (Int, Int), -- start of viewable portion
-  fileCoord :: IORef (Int, Int)
+  fileCoord :: IORef ((Int, Int), Int {- ^ hidden column -})
   }
 
 newTextWidget :: IO TextWidget
-newTextWidget = TextWidget <$> newIORef (fromString "") <*> newIORef (0,0) <*> newIORef (0,0)
+newTextWidget = TextWidget <$> newIORef (fromString "") <*> newIORef (0,0) <*> newIORef ((0,0), 0)
 
 getText :: TextWidget -> IO String
 getText tw = toString <$> readIORef (buffer tw)
@@ -31,7 +31,7 @@ render tw sq = do
   w <- defaultWindow
   buf <- liftIO $ readBuffer tw
   t <- liftIO $ readPortalTop tw
-  crsr <- liftIO $ readFileCoord tw
+  (crsr, _) <- liftIO $ readFileCoord tw
   updateWindow w $ do
     let cols = columns sq
         wbuf = (buf, cols)
@@ -58,16 +58,19 @@ handleEvent tw sq e = liftIO $ do
       modBuffer action = do
         fc <- readFileCoord tw
         cnt <- readBuffer tw
-        let cnt' = action fc cnt
+        let (cnt', fc') = action fc cnt
         writeIORef (buffer tw) cnt'
-      ins c = do
-        modBuffer (insert c)
+        writeIORef (fileCoord tw) fc'
+      ins char = do
+        modBuffer (\(f@(r,c),_) b -> (insert char f b, ((r,c),c)))
         move 0 1
-      del = modBuffer (\f b -> fst $ delete f b)
+      del = modBuffer (\(f@(r,c),_) b -> (fst $ delete f b, ((r,c),c)))
       newline = ins '\n'
       backspace = do
         fc <- readFileCoord tw
-        when (fc /= (0, 0)) $ move 0 (negate 1) >> del
+        case fc of
+          ((0,0),_) -> return ()
+          _ -> move 0 (negate 1) >> del
   case e of
     EventSpecialKey k -> do
       case k of
@@ -78,13 +81,13 @@ handleEvent tw sq e = liftIO $ do
         KeyDeleteCharacter -> del
         KeyBackspace -> backspace
         KeyEnter -> newline
-        KeyHome -> modifyIORef (fileCoord tw) (\(r,_) -> (r, 0))
+        KeyHome -> modifyIORef (fileCoord tw) (\((r,_),_) -> ((r, 0), 0))
         KeyEnd -> do
           buf <- readBuffer tw
-          (r,_) <- readFileCoord tw
+          ((r,_),_) <- readFileCoord tw
           case buf `line` r of
             Nothing -> return ()
-            Just l -> writeIORef (fileCoord tw) (r, length l)
+            Just l -> let ll = length l in writeIORef (fileCoord tw) ((r, ll), ll)
         _ -> return ()
     EventCharacter '\b' -> backspace
     EventCharacter '\n' -> newline
@@ -115,7 +118,7 @@ columns sq = width sq - 1
 scrollToCursor tw sq = do
   let cols = columns sq
   buf <- readBuffer tw
-  fileCoord <- readFileCoord tw
+  (fileCoord, _) <- readFileCoord tw
   t <- readPortalTop tw
   let wb = (buf, cols)
       (r,c) = translate wb fileCoord

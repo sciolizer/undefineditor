@@ -7,3 +7,4 @@ mouse click should reposition cursor
 mouse drag should select
 undo/redo?
 cabalify? (maybe later; will probably still need heavy modification, for things like jump to line; find line to make red, syntax high-lighting, etc)
+fix scrollToCursor

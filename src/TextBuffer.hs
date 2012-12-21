@@ -11,6 +11,7 @@ data Buffer = Buffer (ListZipper String)
   deriving (Eq, Ord, Read, Show)
 
 type FileCoord = (Int, Int)
+type ExtendedFileCoord = (FileCoord, Int {- ^ remembered column -})
 type PortalCoord = (Int, Int)
 
 type WidthBuffer = (Buffer, Int {- ^ columns -})
@@ -23,40 +24,44 @@ portalify (Buffer lz, cols) portalRow = drop portalRow ret where
       (_,"") -> [(ov, line)]
       (left, right) -> ((ov, left) : chunk True right)
 
-upward, downward, leftward, rightward :: WidthBuffer -> FileCoord -> FileCoord
-upward (Buffer lz, cols) (r,c) = z where
+upward, downward, leftward, rightward :: WidthBuffer -> ExtendedFileCoord -> ExtendedFileCoord
+upward (Buffer lz, cols) ((r,c),ch) = z where
   r' = r - 1
   z = case lz `at` r of
-        Nothing -> (size lz - 1, 0)
+        Nothing -> ((size lz - 1, 0), 0)
         Just _ ->
           if c - cols < 0
             then case lz `at` r' of
-                   Nothing -> (0, 0)
+                   Nothing -> ((0, 0), 0)
                    Just line' ->
                      let l = length line'
-                         c' = if l < c then l else last [c,(c+cols)..l] in
-                     (r', c')
-            else (r, c - cols)
-downward (Buffer lz, cols) (r,c) = z where
-  fileEnd = (size lz - 1, length (final lz))
+                         c' = if l < ch then l else last [ch,(ch+cols)..l] in
+                     ((r', c'), ch)
+            else ((r, c - cols), ch)
+downward (Buffer lz, cols) ((r,c),ch) = z where
+  finalLength = length (final lz)
+  fileEnd = ((size lz - 1, finalLength), max finalLength ch)
   r' = r + 1
   z = case lz `at` r of
         Nothing -> fileEnd
         Just line ->
-          let l = length line in
-          if c + cols <= l
-            then (r, c + cols)
+          let l = length line
+              chcols = ch + cols in
+          if chcols <= l
+            then ((r, chcols), chcols)
             else case lz `at` r' of
                    Nothing -> fileEnd
-                   Just line' -> (r', min (length line') c)
-leftward _ (0,0) = (0,0)
-leftward (Buffer lz, _) (r,0) =
+                   Just line' -> ((r', min (length line') ch), ch)
+leftward b (rc,_) = let (r,c) = leftwardrc b rc in ((r,c),c)
+leftwardrc _ (0,0) = (0,0)
+leftwardrc (Buffer lz, _) (r,0) =
   let r' = r - 1 in
   case lz `at` r' of
     Nothing -> error $ "no line found at " ++ show r'
     Just line -> (r', length line)
-leftward _ (r,c) = (r, c - 1)
-rightward (Buffer lz, _) (r,c) =
+leftwardrc _ (r,c) = (r, c - 1)
+rightward b (rc,_) = let (r,c) = rightwardrc b rc in ((r,c),c)
+rightwardrc (Buffer lz, _) (r,c) =
   case lz `at` r of
     Nothing -> case size lz of
                  0 -> (0, 0)
