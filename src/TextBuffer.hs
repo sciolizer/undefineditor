@@ -116,7 +116,7 @@ unroll (ListZipper before after) = combine before after where
 at :: ListZipper a -> Int -> Maybe a
 at (ListZipper before after) i = z where
   lb = length before
-  z | i < lb = before !! (lb - i)
+  z | i < lb = before !! (lb - i - 1)
     | otherwise = after !! (i - lb)
 
 (!!) :: [a] -> Int -> Maybe a
@@ -135,9 +135,10 @@ reversed (ListZipper before after) = shift before after where
   shift xs [] = xs
   shift xs (y:ys) = shift (y:xs) ys
 
+-- todo: make faster
 splitOn :: ListZipper a -> Int -> Maybe ([a], a, [a])
 splitOn _ i | i < 0 = error "cannot splitOn negative"
 splitOn lz i =
   case splitAt i (unroll lz) of
     (_, []) -> Nothing
-    (bf, (x:xs)) -> Just (bf, x, xs)
+    (bf, (x:xs)) -> Just (reverse bf, x, xs)

@@ -5,7 +5,6 @@ module TextWidget where
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.Trans.RWS
 import Data.IORef
 import UI.NCurses
 
@@ -52,10 +51,23 @@ render tw sq = do
           | otherwise -> Just (r', c + 1)
 
 handleEvent :: TextWidget -> Square -> Event -> M ()
-handleEvent tw sq e = do
-  let move rd cd = liftIO $ do
+handleEvent tw sq e = liftIO $ do
+  let move rd cd = do
         moveInternalCursor tw (columns sq) rd cd
         scrollToCursor tw sq
+      modBuffer action = do
+        fc <- readFileCoord tw
+        cnt <- readBuffer tw
+        let cnt' = action fc cnt
+        writeIORef (buffer tw) cnt'
+      ins c = do
+        modBuffer (insert c)
+        move 0 1
+      del = modBuffer (\f b -> fst $ delete f b)
+      newline = ins '\n'
+      backspace = do
+        fc <- readFileCoord tw
+        when (fc /= (0, 0)) $ move 0 (negate 1) >> del
   case e of
     EventSpecialKey k -> do
       case k of
@@ -63,34 +75,15 @@ handleEvent tw sq e = do
         KeyUpArrow -> move (negate 1) 0
         KeyLeftArrow -> move 0 (negate 1)
         KeyRightArrow -> move 0 1
+        KeyDeleteCharacter -> del
+        KeyBackspace -> backspace
+        KeyEnter -> newline
+        KeyHome -> modifyIORef (fileCoord tw) (\(r,_) -> (r, 0))
         _ -> return ()
+    EventCharacter '\b' -> backspace
+    EventCharacter '\n' -> newline
+    EventCharacter c | c >= ' ' && c <= '~' -> ins c
     _ -> return ()
-
-{-
-splitBuffer :: Int {- ^ cursor index -} -> Int {- ^ columns -} -> String -> ([(Bool,String)], Maybe (Int, Int) {- ^ cursor -} )
-splitBuffer ci cols str = (ret,mbScrCur) where
-  -- state: (String left, Int linesMade, Int charsConsumed, Maybe (Int, Int) screen cursor)
-  ((_, _, _, mbScrCur), ret) = execRWS (rb False) () (str, 0, 0, Nothing)
-  peek i = take i . (\(s,_,_,_) -> s) <$> get
-  consume i = do
-    (s,!lm,!cc,sc) <- get
-    let s' = drop i s
-        cc' = cc + i
-        sc' = case (sc, ci >= cc && ci < cc') of
-                (Nothing, True) -> Just (lm, ci - cc)
-                (Just _, True) -> error "cursor in two places!"
-                (x, False) -> x
-    put (s', lm + 1, cc', sc')
-    return . not . null $ s'
-  rb ov = do
-    s <- peek (cols + 1)
-    let lookahead = takeWhile (/= '\n') s
-        ch = take cols lookahead
-        overflow = length lookahead >= cols
-    tell [(ov,ch)]
-    continue <- consume (length ch + if overflow then 0 else 1)
-    when continue (rb overflow)
-    -}
 
 moveInternalCursor tw cols rd cd = z where
   z = do
@@ -110,16 +103,6 @@ countLines tw = length . lines <$> getText tw
 readFileCoord = readIORef . fileCoord
 readPortalTop = readIORef . portalTop
 readBuffer = readIORef . buffer
-
-{-
-cursorIndex tw = do
-  (r,c) <- readCursor tw
-  t <- getText tw
-  let prefix = take r (lines t)
-  let ret = length (unlines prefix) + c
-  putStrLn $ show (r,c) ++ ": " ++ show ret
-  return ret
-  -}
 
 columns sq = width sq - 1
 

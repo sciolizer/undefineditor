@@ -23,3 +23,5 @@ testRightEnd2 = rightward (fromString "012\n012", 5) (0, 3) == (1, 0)
 testRightFileEnd = rightward (fromString "012", 5) (0, 3) == (0, 3)
 
 testLeftward = leftward (fromString "012\n012", 5) (1, 0) == (0, 3)
+
+testUpFromTop = upward (Buffer (ListZipper ["012"] ["345"]), 5) (0, 0) == (0, 0)

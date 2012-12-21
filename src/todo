@@ -1,0 +1,9 @@
+end key should work
+ctrl+home and ctrl+end
+pgdown, pgup (careful not to go past end of file)
+support selection (shift+arrow/(ctrl+)home/(ctrl+)end/pgdown/pgup)
+cut, copy, paste
+mouse click should reposition cursor
+mouse drag should select
+undo/redo?
+cabalify? (maybe later; will probably still need heavy modification, for things like jump to line; find line to make red, syntax high-lighting, etc)
