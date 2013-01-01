@@ -12,10 +12,10 @@ import Data.Sequence.Lens
 import Control.Monad
 import Data.Foldable
 import qualified Data.Sequence as S
-import Data.Sequence ((><), (<|), (|>), ViewL((:<)), ViewR((:>)))
+import Data.Sequence ((><), (<|), ViewL((:<)))
 
 data LZipper a = LZipper {
-  _before :: S.Seq a,
+  _before :: S.Seq a, -- reversed
   _after :: S.Seq a
   }
 
@@ -24,10 +24,10 @@ makeLenses ''LZipper
 zipper :: [a] -> LZipper a
 zipper xs = LZipper S.empty (S.fromList xs)
 
-focus :: SimpleIndexedLens (Tape a) (LZipper a) (Maybe a)
+focus :: SimpleIndexedLens Int (LZipper a) (Maybe a)
 focus = indexed foo where
-  foo :: (Functor f) => (Tape a -> (Maybe a) -> f (Maybe a)) -> LZipper a -> f (LZipper a)
-  foo f lz@(LZipper bf _) = swapIn lz <$> f (Tape (S.length bf)) (current lz)
+  foo :: (Functor f) => (Int -> (Maybe a) -> f (Maybe a)) -> LZipper a -> f (LZipper a)
+  foo f lz@(LZipper bf _) = swapIn lz <$> f (S.length bf) (current lz)
   swapIn :: LZipper a -> Maybe a -> LZipper a
   swapIn lz val = over (after.viewL) changeHead lz where
     changeHead S.EmptyL =
@@ -42,8 +42,7 @@ focus = indexed foo where
   current = view (after . viewL . to safeHead) where
     safeHead S.EmptyL = Nothing
     safeHead (x :< _) = Just x
-
-invalidArgument = error
+  invalidArgument = error
 
 -- usage: over myZipper (insert 'x')
 insert :: a -> LZipper a -> LZipper a
@@ -60,13 +59,13 @@ deleteMaybe = undefined
 -}
 
 leftward, rightward :: MonadPlus m => LZipper a -> m (LZipper a)
-leftward (LZipper bf af) | S.null bf = mzero
-                         | otherwise = return $ LZipper bf' (x <| af) where
-                             bf' :> x = S.viewr bf
+leftward (LZipper bf af) = uncurry (flip LZipper) `liftM` (af `shiftOnto` bf)
+rightward (LZipper bf af) = uncurry LZipper `liftM` (bf `shiftOnto` af)
 
-rightward (LZipper bf af) | S.null af = mzero
-                          | otherwise = return $ LZipper (bf |> x) af' where
-                              x :< af' = S.viewl af
+x `shiftOnto` y =
+  case S.viewl x of
+    S.EmptyL -> mzero
+    z :< x' -> return (x', z <| y)
 
 leftmost, rightmost :: LZipper a -> LZipper a
 leftmost = farthest leftward
@@ -93,7 +92,7 @@ tugTo n z = ret where
           GT -> tugs leftward (k - n) z
 
 rezip :: LZipper a -> [a]
-rezip (LZipper l r) = toList (l >< r)
+rezip (LZipper l r) = toList (S.reverse l >< r)
 
 {-
 data Tape a = Tape Int
