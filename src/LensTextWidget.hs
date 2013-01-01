@@ -36,21 +36,31 @@ type Cursor
 type Buffer = SS Char
 
 isContinuedLine :: Buffer -> Columns -> PortalCoord -> Bool
-isContinuedLine = undefined
+isContinuedLine ss cols (PortalCoord r _) = r + 1 /= curLength where
+  (_, _, curLength) = rowInfo ss cols r
+
+lineLength cols = (+1) . (`div` cols) . S.length
+
+rowInfo ss cols portalRow = (fileRow, prevLength, curLength) where
+  lineLengths = S.scanl (\s l -> s + lineLength cols l) 0 $ ss
+  (front, back) = S.spanl (<= portalRow) lineLengths
+  fileRow = S.length front
+  prevLength =
+    case S.viewr lineLengths of
+      S.EmptyR -> 0
+      _ :> l -> l
+  curLength =
+    case S.viewl back of
+      S.EmptyL -> error "Given portal row is outside of buffer"
+      l :< _ -> l
 
 portal :: Buffer -> Columns -> Simple Iso FileCoord PortalCoord
 portal ss cols = iso toPortal fromPortal where
-  lineLength = (+1) . (`div` cols) . S.length
   toPortal (FileCoord r c) = PortalCoord (r' + offset) c' where
-    Sum r' = foldMap (Sum . lineLength) (S.take r ss) -- todo: find a cheaper way to do this
+    Sum r' = foldMap (Sum . lineLength cols) (S.take r ss) -- todo: find a cheaper way to do this
     (offset, c') = (c `div` cols, c `mod` cols)
-  fromPortal (PortalCoord r c) = FileCoord r' c' where
-    lineLengths = S.takeWhileL (<=r) . S.scanl (\s l -> s + lineLength l) 0 $ ss
-    r' = S.length lineLengths
-    c' = c + cols * (r - l)
-    l = case S.viewr lineLengths of
-           S.EmptyR -> 0
-           _ :> l -> l
+  fromPortal (PortalCoord r c) = FileCoord fileRow (c + cols * (r - prevLength)) where
+    (fileRow, prevLength, _) = rowInfo ss cols r
 
 normalize :: Buffer -> FileCoord -> FileCoord
 normalize = undefined -- or whatever a partially applied set operation is
