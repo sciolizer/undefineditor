@@ -82,8 +82,10 @@ slice fc1 = lens get set . concatenated where
   splitRange fc2 ss = (left, (leftFst, leftSnd), middle, (rightFst, rightSnd), right) where
     (front, (rightFst, rightSnd), right) = parts ss fc2
     (left, (leftFst, leftSnd), middle) = parts front fc1
+  get :: (SS a, FileCoord) -> SS a
   get (ss, fc2) = (leftSnd <| middle) |> rightFst where
     (_, (_, leftSnd), middle, (rightFst, _), _) = splitRange fc2 ss
+  set :: (SS a, FileCoord) -> SS a -> (SS a, FileCoord)
   set (ss, fc2) repl =
     case S.viewl repl of
       S.EmptyL -> internalBug $ "replacement is empty; should be at least a singleton of empty; probably a bug in `concatenated`"
