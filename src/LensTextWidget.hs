@@ -4,6 +4,7 @@ module LensTextWidget where
 
 import Control.Lens
 import Control.Monad
+import Data.Sequence ((><), (<|), (|>), ViewL((:<)), ViewR((:>)))
 import qualified Data.Sequence as S
 
 data FileCoord = FileCoord {
@@ -43,39 +44,55 @@ render :: Columns -> UpperLeft -> Getter Buffer [(Bool, String)]
 
 -}
 
--- concatenated :: Simple Iso (S.Seq (S.Seq a)) (S.Seq a)
+-- concatenated :: Simple Iso (SS a) (S a)
 concatenated = iso combine split where
   combine ss =
-    case S.viewr . join . fmap (S.|> '\n') $ ss of
+    case S.viewr . join . fmap (|> '\n') $ ss of
       S.EmptyR -> internalBug "outer sequence of buffer should never be empty"
-      ret S.:> _ -> ret
-  split = S.unfoldr chunk
+      ret :> _ -> ret
+  split = ensureNonEmpty . S.unfoldr chunk
   chunk rest =
+    if S.null rest then Nothing else
     case S.spanl (/= '\n') rest of
       (left, right) ->
         case S.viewl right of
-          ('\n' S.:< r) -> Just (left, r)
-          (_ S.:< _) -> internalBug "impossible: front should have been \\n"
-          S.EmptyL -> Nothing
+          ('\n' :< r) -> Just (left, r)
+          (_ :< _) -> internalBug "impossible: front should have been \\n"
+          S.EmptyL -> Just (left, S.empty)
+  ensureNonEmpty x =
+    case S.viewl x of
+      S.EmptyL -> S.singleton S.empty
+      _ :< _ -> x
 
 internalBug = error
 
+type S = S.Seq
+type SS a = S.Seq (S.Seq a)
+
 -- use this for inserts and deletes
-{-
-slicedBetween :: FileCoord -> FileCoord -> Simple Lens Buffer (S.Seq Char)
-slicedBetween fca fcb = seqs.(lens get set) where
+slicedBetween :: FileCoord -> FileCoord -> Simple Lens Buffer (S Char)
+slicedBetween fca fcb = seqs.(lens get set).concatenated where
   (fc1, fc2) = if fca < fcb then (fca, fcb) else (fcb, fca)
-  parts ss =
+  parts :: SS a -> FileCoord -> (SS a, (S a, S a), SS a)
+  parts ss (FileCoord r c) =
     case S.splitAt r ss of
       (bfLine, right) ->
         case S.viewl right of
           S.EmptyL -> error $ "coordinate is past last line: " ++ show r ++ ", " ++ show c
-          (x S.:< xs) -> (bfLine, S.splitAt c x, xs)
-  get ss = afChar S.<| afLine
-    where (_, (_, afChar), afLine) = parts ss
+          (x :< xs) -> (bfLine, S.splitAt c x, xs)
+  splitRange :: SS a -> (SS a, (S a, S a), SS a, (S a, S a), SS a)
+  splitRange ss = (left, (leftFst, leftSnd), middle, (rightFst, rightSnd), right) where
+    (front, (rightFst, rightSnd), right) = parts ss fc2
+    (left, (leftFst, leftSnd), middle) = parts front fc1
+  get ss = (leftSnd <| middle) |> rightFst where
+    (_, (_, leftSnd), middle, (rightFst, _), _) = splitRange ss
   set ss repl =
     case S.viewl repl of
-      S.EmptyL -> error $ "replacement is empty; if you really want to delete to the end, use Data.Sequence.singleton Data.Sequence.empty"
-      (x S.:< xs) -> bfLine S.>< ((bfChar S.>< x) S.<| xs)
-    where (bfLine, (bfChar, _), _) = parts ss
-    -}
+      S.EmptyL -> internalBug $ "replacement is empty; should be at least a singleton of empty; probably a bug in `concatenated`"
+      (x :< xs) -> let
+        middle =
+          case S.viewr xs of
+            S.EmptyR -> S.singleton $ leftFst >< x >< rightSnd
+            (ys :> y) -> ((leftFst >< x) <| ys) |> (y >< rightSnd) in
+        left >< middle >< right where
+          (left, (leftFst, _), _, (_, rightSnd), right) = splitRange ss
