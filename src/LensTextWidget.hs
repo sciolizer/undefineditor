@@ -4,6 +4,8 @@ module LensTextWidget where
 
 import Control.Lens
 import Control.Monad
+import Data.Foldable
+import Data.Monoid
 import Data.Sequence ((><), (<|), (|>), ViewL((:<)), ViewR((:>)))
 import qualified Data.Sequence as S
 
@@ -14,7 +16,7 @@ data FileCoord = FileCoord {
 
 data PortalCoord = PortalCoord {
   _portalRow :: Int,
-  _portalCol :: Int -- hidden column; visible cursor might be further left if the line is too short
+  _portalCol :: Int
   }
 
 {-
@@ -24,8 +26,8 @@ data ViewCoord = ViewCoord {
   } -- view coordinate is just what you get from subtracting the cursor version of UpperLeft from the cursor version position of cursor
   -}
 
-{-
 type Columns = Int
+{-
 type UpperLeft = FileCoord -- where the view starts
 type Cursor
 -}
@@ -33,10 +35,26 @@ type Cursor
 -- should always be non-empty
 type Buffer = SS Char
 
-{-
-portal :: Buffer -> Columns -> Simple Iso FileCoord CursorCoord
-portal b
+isContinuedLine :: Buffer -> Columns -> PortalCoord -> Bool
+isContinuedLine = undefined
 
+portal :: Buffer -> Columns -> Simple Iso FileCoord PortalCoord
+portal ss cols = iso toPortal fromPortal where
+  lineLength = (+1) . (`div` cols) . S.length
+  toPortal (FileCoord r c) = PortalCoord (r' + offset) c' where
+    Sum r' = foldMap (Sum . lineLength) (S.take r ss) -- todo: find a cheaper way to do this
+    (offset, c') = (c `div` cols, c `mod` cols)
+  fromPortal (PortalCoord r c) = FileCoord r' c' where
+    lineLengths = S.takeWhileL (<=r) . S.scanl (\s l -> s + lineLength l) 0 $ ss
+    r' = S.length lineLengths
+    c' = c + cols * (r - l)
+    l = case S.viewr lineLengths of
+           S.EmptyR -> 0
+           _ :> l -> l
+
+normalize :: Buffer -> FileCoord -> FileCoord
+normalize = undefined -- or whatever a partially applied set operation is
+{-
 render :: Columns -> UpperLeft -> Getter Buffer [(Bool, String)]
 
 -}
@@ -69,6 +87,7 @@ type SS a = S.Seq (S.Seq a)
 type Slice = (Buffer, FileCoord {- end -})
 
 -- use this for inserts and deletes
+-- start and end should be anchored file coordinates
 slice :: FileCoord {- start -} -> Simple Lens Slice (S Char)
 slice fc1 = lens get set . concatenated where
   parts :: SS a -> FileCoord -> (SS a, (S a, S a), SS a)
