@@ -7,13 +7,12 @@
 module LZipper where
 
 import Control.Applicative
--- import qualified Control.Lens as L
-import Control.Lens hiding (Tape, rezip, saveTape, unsafelyRestoreTape, zipper)
+import Control.Lens hiding (Tape, leftward, rezip, rightward, saveTape, tooth, unsafelyRestoreTape, zipper)
 import Data.Sequence.Lens
 import Control.Monad
 import Data.Foldable
 import qualified Data.Sequence as S
-import Data.Sequence ((><), ViewL((:<)))
+import Data.Sequence ((><), (<|), (|>), ViewL((:<)), ViewR((:>)))
 
 data LZipper a = LZipper {
   _before :: S.Seq a,
@@ -25,12 +24,8 @@ makeLenses ''LZipper
 zipper :: [a] -> LZipper a
 zipper xs = LZipper S.empty (S.fromList xs)
 
--- instance Indexable (Tape a) k
--- if the value is a Just, you can only set a Just
--- if the value is a Nothing, you can only set a Nothing
--- replacing a Nothing with a Just or a Just with a Nothing produces an error
 focus :: SimpleIndexedLens (Tape a) (LZipper a) (Maybe a)
-focus = indexed foo where -- $ \f lz@(LZipper (i,_) _) -> swapIn lz <$> f (Tape i) (current lz)
+focus = indexed foo where
   foo :: (Functor f) => (Tape a -> (Maybe a) -> f (Maybe a)) -> LZipper a -> f (LZipper a)
   foo f lz@(LZipper bf _) = swapIn lz <$> f (Tape (S.length bf)) (current lz)
   swapIn :: LZipper a -> Maybe a -> LZipper a
@@ -52,11 +47,11 @@ invalidArgument = error
 
 -- usage: over myZipper (insert 'x')
 insert :: a -> LZipper a -> LZipper a
-insert x = undefined -- over after (\(!i,xs) -> (i + 1, x : xs))
+insert x = over after (x <|)
 
 -- deleting at the end is a no-op
 delete :: LZipper a -> LZipper a
-delete = undefined
+delete = over after (S.drop 1)
 
 {-
 deleteCheck :: LensLike ((,) (LZipper a)) s Bool (LZipper a) (LZipper a) -> LZipper a -> s -> (LZipper a, Bool)
@@ -65,30 +60,46 @@ deleteMaybe = undefined
 -}
 
 leftward, rightward :: MonadPlus m => LZipper a -> m (LZipper a)
-leftward = undefined
-rightward = undefined
+leftward (LZipper bf af) | S.null bf = mzero
+                         | otherwise = return $ LZipper bf' (x <| af) where
+                             bf' :> x = S.viewr bf
+
+rightward (LZipper bf af) | S.null af = mzero
+                          | otherwise = return $ LZipper (bf |> x) af' where
+                              x :< af' = S.viewl af
 
 leftmost, rightmost :: LZipper a -> LZipper a
-leftmost = undefined
-rightmost = undefined
+leftmost = farthest leftward
+rightmost = farthest rightward
 
 tooth, teeth :: LZipper a -> Int
-tooth = undefined
-teeth = undefined
+tooth (LZipper bf _) = S.length bf
+teeth (LZipper bf af) = S.length bf + S.length af
 
 jerkTo :: MonadPlus m => Int -> LZipper a -> m (LZipper a)
-jerkTo = undefined
+jerkTo n z = ret where
+  k = tooth z
+  ret = case compare k n of
+          LT -> jerks rightward (n - k) z
+          EQ -> return z
+          GT -> jerks leftward (k - n) z
 
 tugTo :: Int -> LZipper a -> LZipper a
-tugTo = undefined
+tugTo n z = ret where
+  k = tooth z
+  ret = case compare k n of
+          LT -> tugs rightward (n - k) z
+          EQ -> z
+          GT -> tugs leftward (k - n) z
 
 rezip :: LZipper a -> [a]
 rezip (LZipper l r) = toList (l >< r)
 
+{-
 data Tape a = Tape Int
 
 saveTape :: LZipper a -> Tape a
-saveTape = undefined
+saveTape = Tape . teeth
 
 restoreTape :: MonadPlus m => Tape a -> [a] -> m (LZipper a)
 restoreTape = undefined
@@ -98,3 +109,4 @@ restoreNearTape = undefined
 
 unsafelyRestoreTape :: Tape a -> [a] -> LZipper a
 unsafelyRestoreTape = undefined
+-}
