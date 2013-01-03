@@ -65,6 +65,8 @@ newHaskellTab notebook whence buffer rvars tabName = do
   set scrolledWindow [scrolledWindowHscrollbarPolicy := PolicyNever]
   sourceView <- sourceViewNewWithBuffer buffer
   set sourceView [textViewWrapMode := WrapChar, sourceViewShowLineNumbers := True]
+  textAttributes <- textViewGetDefaultAttributes sourceView
+  set textAttributes []
   containerAdd scrolledWindow sourceView
   widgetShow scrolledWindow -- still haven't figured when widgetShow is and is not necessary
   widgetShow sourceView
