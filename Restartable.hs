@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE TypeOperators #-}
 module Restartable where
 
 import Data.Binary
@@ -28,3 +30,27 @@ type TypeRepString = String
 -- ignored if their TypeRep does not match the latest.
 resumeAll :: (Typeable a) => [RestartableBinding] -> [Binding] -> [(TypeRepString,B.ByteString)] -> IO a
 resumeAll = undefined
+
+data Top = Top
+  deriving (Eq, Ord, Read, Show, Typeable)
+
+data a :- b = a :- b
+  deriving (Eq, Ord, Read, Show, Typeable)
+
+chainRestartableBinding :: a -> b :- a
+chainRestartableBinding = undefined
+
+{-
+could just do
+Nil
+Cons Dynamic Nil
+Cons Dynamic (Cons Dynamic Nil)
+etc
+-}
+
+data Root a
+
+data Succ a
+
+-- withRB :: RestartableBinding -> a -> Succ a
+

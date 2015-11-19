@@ -4,9 +4,11 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module DependencyInjection (
   Binding(),
+  Injector(),
   Constructor,
   constructor,
   constructed,
+  injector,
   instantiate
 ) where
 
@@ -17,6 +19,7 @@ import Control.Monad.Except
 import Control.Monad.State
 import Data.Dynamic
 import Data.Functor.Identity
+import Data.IORef
 import Data.List hiding (insert, lookup)
 import Data.Map hiding (foldl)
 
@@ -36,9 +39,9 @@ key (Requires _ t _) = t
 mkMap :: [Binding] -> TypeRep -> [Binding]
 mkMap = foldl (\mp b tr -> (if key b == tr then [b] else []) ++ mp tr) (const []) where
 
-create :: (TypeRep -> [Binding]) -> TypeRep -> IO (Either BindingError Dynamic)
-create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
-  m :: TypeRep -> ExceptT BindingError (StateT (Map TypeRep Dynamic) IO) Dynamic
+create :: (TypeRep -> [Binding]) -> TypeRep -> StateT BindingMap IO (Either BindingError Dynamic)
+create allBindings = runExceptT . m where
+  m :: TypeRep -> ExceptT BindingError (StateT BindingMap IO) Dynamic
   m tr = do
     mbDyn <- gets (lookup tr)
     case mbDyn of
@@ -93,24 +96,48 @@ we actually don't really need factory, since you can just do
   \inj1 inj2 inj3 -> Identity (\spec1 spec2 -> ...)
 -}
 
+type BindingMap = Map TypeRep Dynamic
+
+data Injector = Injector
+  (IORef BindingMap)
+  (TypeRep -> StateT BindingMap IO (Either BindingError Dynamic))
+
+injector :: [Binding] -> IO Injector
+injector bs = do
+  bmap <- newIORef empty
+  return $ Injector bmap (create (mkMap bs))
+
+instantiate :: forall a. Typeable a => Injector -> IO (Either BindingError a)
+instantiate (Injector bmapRef m) = do
+  bmap <- readIORef bmapRef
+  (ebd, newMap) <- runStateT (m (typeRep (Proxy :: Proxy a))) bmap
+  writeIORef bmapRef newMap
+  let unDyn d = case fromDynamic d of { Just x -> x; Nothing -> error "wrong type came out" }
+  return . fmap unDyn $ ebd
+
+{-
 instantiate :: forall a. Typeable a => [Binding] -> IO (Either BindingError a)
 instantiate bindings = do
   let allBindings = mkMap bindings
   ebd <- create allBindings (typeRep (Proxy :: Proxy a))
   let unDyn d = case fromDynamic d of { Just x -> x; Nothing -> error "wrong type came out" }
   return . fmap unDyn $ ebd
+  -}
 
 tt :: IO ()
 tt = do
-  instantiate [constructed (5 :: Int)] --> Right (5 :: Int)
-  (instantiate [] :: IO (Either BindingError ())) --> Left (UnsatisfiedDependency (typeRep (Proxy :: Proxy ())))
-  instantiate [constructed 'a', constructor (Identity . (:[]) :: Char -> Identity String)] --> Right "a"
-  instantiate [constructed 'a', constructed (5 :: Int), constructor (\c i -> Identity $ [c] ++ show (i :: Int))] --> Right "a5"
-  instantiate
+  ii [constructed (5 :: Int)] --> Right (5 :: Int)
+  (ii [] :: IO (Either BindingError ())) --> Left (UnsatisfiedDependency (typeRep (Proxy :: Proxy ())))
+  ii [constructed 'a', constructor (Identity . (:[]) :: Char -> Identity String)] --> Right "a"
+  ii [constructed 'a', constructed (5 :: Int), constructor (\c i -> Identity $ [c] ++ show (i :: Int))] --> Right "a5"
+  ii
     [ constructor (\c i -> return ([c] ++ show (i :: Int)) :: IO String)
     , constructor (Identity . (fromInteger :: Integer -> Int))
     , constructed 'a'
     , constructed (7 :: Integer) ] --> Right "a7" -- test incorrctly erporting duplicate binding of int =(
+
+ii :: Typeable a => [Binding] -> IO (Either BindingError a)
+ii bs = instantiate =<< injector bs
 
 (-->) :: (Show a, Eq a) => IO a -> a -> IO ()
 x --> y = do
