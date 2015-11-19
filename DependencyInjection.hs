@@ -189,6 +189,7 @@ tt :: IO ()
 tt = do
   instantiate [constructed (5 :: Int)] --> Right (5 :: Int)
   (instantiate [] :: IO (Either BindingError ())) --> Left (UnsatisfiedDependency (typeRep (Proxy :: Proxy ())))
+  instantiate [constructed 'a', constructor (Identity . (:[]) :: Char -> Identity String)] --> Right "a"
 
 (-->) :: (Show a, Eq a) => IO a -> a -> IO ()
 x --> y = do
