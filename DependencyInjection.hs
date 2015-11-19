@@ -12,6 +12,7 @@ import Control.Monad.Except
 import Control.Monad.State
 import Data.Dynamic
 import Data.Functor.Identity
+import Data.List hiding (insert, lookup)
 import Data.Map hiding (foldl)
 import Data.Maybe
 
@@ -20,6 +21,10 @@ data Binding
   -- | forall a. Typeable a => Requires (a -> Binding) -- can try this later
   | Requires [TypeRep] TypeRep ([Dynamic] -> IO Dynamic)
   -- | Creates Dynamic -- to be changed to (IO Dynamic) later?
+
+instance Show Binding where
+  show (Instance d) = "Instance " ++ show d
+  show (Requires trs tr _) = "Requires [" ++ intercalate "," (fmap show trs) ++ "] " ++ show tr
 
 data BindingError
   = DuplicateBinding TypeRep
@@ -56,7 +61,9 @@ create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
       Nothing -> do
         case allBindings tr of
           [] -> throwError (UnsatisfiedDependency tr)
-          (_:_:_) -> throwError (DuplicateBinding tr)
+          xx@(_:_:_) -> do
+            liftIO $ print xx
+            throwError (DuplicateBinding tr)
           [Instance d] -> do
             modify (insert tr d)
             return d
@@ -195,7 +202,7 @@ tt = do
     [ constructor (\c i -> return ([c] ++ show (i :: Int)) :: IO String)
     , constructor (Identity . (fromInteger :: Integer -> Int))
     , constructed 'a'
-    , constructed (7 :: Int) ] --> Right "a7" -- test incorrctly erporting duplicate binding of int =(
+    , constructed (7 :: Integer) ] --> Right "a7" -- test incorrctly erporting duplicate binding of int =(
 
 (-->) :: (Show a, Eq a) => IO a -> a -> IO ()
 x --> y = do
