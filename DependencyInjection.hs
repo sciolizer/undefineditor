@@ -122,11 +122,24 @@ mkGraph :: [Binding] -> [(Binding, TypeRep, [TypeRep])]
 mkGraph = fmap (\b -> (b, key b, dependencies b))
 
 constructed :: (Typeable a) => a -> Binding
-constructed = undefined
+constructed = Instance . toDyn
 
-class Constructor f
+class Constructor c where
+  inputs :: c -> [TypeRep]
+  output :: c -> TypeRep
+  creator :: c -> [Dynamic] -> IO Dynamic
+  -- | Requires [TypeRep] TypeRep ([Dynamic] -> IO Dynamic)
 
-instance (Typeable a) => Constructor (Identity a)
+instance (Typeable a) => Constructor (Identity a) where
+  inputs _ = []
+  output = typeRep
+  creator (Identity v) _ = return (toDyn v)
+
+instance (Typeable a) => Constructor (IO a) where
+  inputs _ = []
+  output = typeRep
+  creator v _ = toDyn <$> v
+
 instance (Typeable b, Constructor a) => Constructor (b -> a)
 
 {-
