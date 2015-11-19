@@ -7,6 +7,7 @@ module DependencyInjection where
 import Prelude hiding (lookup)
 
 import Control.Applicative hiding (empty)
+import Control.Exception
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Dynamic
@@ -22,7 +23,7 @@ data Binding
 
 data BindingError
   = DuplicateBinding TypeRep
-  | UnsatisfiedDependency TypeRep [TypeRep] -- list is chain back to the instantiation request, with the last item being the instantiation request, or an empty list if there is no binding for the requested instantiation
+  | UnsatisfiedDependency TypeRep -- todo: [TypeRep] -- list is chain back to the instantiation request, with the last item being the instantiation request, or an empty list if there is no binding for the requested instantiation
   deriving (Eq, Ord, Show)
 
 analyze :: Binding -> [Binding] -> ([TypeRep] {- dups -}, [[TypeRep]] {- unsatisfiable chains -},
@@ -54,7 +55,7 @@ create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
       Just d -> return d
       Nothing -> do
         case allBindings tr of
-          [] -> throwError (UnsatisfiedDependency tr [] {- todo -})
+          [] -> throwError (UnsatisfiedDependency tr)
           (_:_:_) -> throwError (DuplicateBinding tr)
           [Instance d] -> do
             modify (insert tr d)
@@ -183,3 +184,23 @@ instantiate bindings = do
 --   a function which has that function signature as a suffix
 --   returns a binding
 -- factory :: b
+
+tt :: IO ()
+tt = do
+  instantiate [constructed (5 :: Int)] --> Right (5 :: Int)
+  (instantiate [] :: IO (Either BindingError ())) --> Left (UnsatisfiedDependency (typeRep (Proxy :: Proxy ())))
+
+(-->) :: (Show a, Eq a) => IO a -> a -> IO ()
+x --> y = do
+  xx <- x
+  case xx == y of
+    True -> return ()
+    False -> ioError . userError $ show xx ++ " /= " ++ show y
+
+{-
+x /-> y = do
+  xx <- x
+  case xx == y of
+    True -> return ()
+    False -> ioError . userError $ show xx ++ " /= " ++ show y
+    -}
