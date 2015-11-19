@@ -1,6 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module DependencyInjection where
 
 import Prelude hiding (lookup)
@@ -11,6 +12,7 @@ import Control.Monad.State
 import Data.Dynamic
 import Data.Functor.Identity
 import Data.Map hiding (foldl)
+import Data.Maybe
 
 data Binding
   = Instance Dynamic
@@ -140,7 +142,19 @@ instance (Typeable a) => Constructor (IO a) where
   output = typeRep
   creator v _ = toDyn <$> v
 
-instance (Typeable b, Constructor a) => Constructor (b -> a)
+instance forall a b. (Typeable b, Constructor a) => Constructor (b -> a) where
+  inputs f = (typeRep (Proxy :: Proxy b)) : (inputs (f undefined))
+  output f = output (f undefined)
+  creator _ [] = error $ "function call with not enough dyn arguments"
+  creator f (x:xs) =
+    case fromDynamic x of
+      Nothing -> error $ "function given wrong type"
+      Just y -> creator (f y) xs
+
+{-
+inputs2 :: forall a b. (Typeable b, Constructor a) => (b -> a) -> [TypeRep]
+inputs2 f = (typeRep (Proxy :: Proxy b)) : (inputs (f undefined))
+-}
 
 {-
 class IOConstructor f
@@ -152,13 +166,17 @@ solve that later
 -}
 
 constructor :: Constructor c => c -> Binding
-constructor = factory 0 -- well, this works in pure land, but not in IO land; will revisit later
+constructor c = Requires (inputs c) (output c) (creator c)
 
 factory :: Constructor c => Int -> c -> Binding
 factory = undefined
 
-instantiate :: Typeable a => [Binding] -> IO a
-instantiate _ = undefined -- rec -- mempty bs where
+instantiate :: forall a. Typeable a => [Binding] -> IO (Either BindingError a)
+instantiate bindings = do
+  let allBindings = mkMap bindings
+  ebd <- create allBindings (typeRep (Proxy :: Proxy a))
+  let unDyn d = case fromDynamic d of { Just x -> x; Nothing -> error "wrong type came out" }
+  return . fmap unDyn $ ebd
 
 -- factory takes two args
 --   a function signature
