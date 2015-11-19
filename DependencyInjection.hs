@@ -191,6 +191,11 @@ tt = do
   (instantiate [] :: IO (Either BindingError ())) --> Left (UnsatisfiedDependency (typeRep (Proxy :: Proxy ())))
   instantiate [constructed 'a', constructor (Identity . (:[]) :: Char -> Identity String)] --> Right "a"
   instantiate [constructed 'a', constructed (5 :: Int), constructor (\c i -> Identity $ [c] ++ show (i :: Int))] --> Right "a5"
+  instantiate
+    [ constructor (\c i -> return ([c] ++ show (i :: Int)) :: IO String)
+    , constructor (Identity . (fromInteger :: Integer -> Int))
+    , constructed 'a'
+    , constructed (7 :: Int) ] --> Right "a7" -- test incorrctly erporting duplicate binding of int =(
 
 (-->) :: (Show a, Eq a) => IO a -> a -> IO ()
 x --> y = do
