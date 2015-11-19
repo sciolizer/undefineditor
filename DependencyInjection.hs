@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module DependencyInjection where
 
 import Prelude hiding (lookup)
@@ -14,7 +15,7 @@ import Data.Map hiding (foldl)
 data Binding
   = Instance Dynamic
   -- | forall a. Typeable a => Requires (a -> Binding) -- can try this later
-  | Requires [TypeRep] TypeRep ([Dynamic] -> Dynamic)
+  | Requires [TypeRep] TypeRep ([Dynamic] -> IO Dynamic)
   -- | Creates Dynamic -- to be changed to (IO Dynamic) later?
 
 data BindingError
@@ -42,8 +43,9 @@ dependencies b =
 mkMap :: [Binding] -> TypeRep -> [Binding]
 mkMap = foldl (\mp b tr -> (if key b == tr then [b] else []) ++ mp tr) (const []) where
 
-create :: (TypeRep -> [Binding]) -> TypeRep -> Either BindingError Dynamic
-create allBindings = fst . flip runState empty . runExceptT . m where
+create :: (TypeRep -> [Binding]) -> TypeRep -> IO (Either BindingError Dynamic)
+create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
+  m :: TypeRep -> ExceptT BindingError (StateT (Map TypeRep Dynamic) IO) Dynamic
   m tr = do
     mbDyn <- gets (lookup tr)
     case mbDyn of
@@ -57,7 +59,7 @@ create allBindings = fst . flip runState empty . runExceptT . m where
             return d
           [Requires deps _ builder] -> do
             dyns <- mapM m deps
-            let result = builder dyns
+            result <- liftIO $ builder dyns
             modify (insert tr result)
             return result
 
