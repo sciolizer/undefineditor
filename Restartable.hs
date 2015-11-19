@@ -9,19 +9,35 @@ import Data.Typeable
 
 import DependencyInjection
 
+-- this should probably be a data type, not a class
 class Restartable a where
-  shutdown :: (Typeable b, Binary b) => a -> IO b
-  resume :: (Typeable b, Binary b) => a -> b -> IO ()
+  shutdown :: a -> IO B.ByteString
+  resume :: a -> B.ByteString -> IO ()
 
-class Constructor a => RestartableConstructor a
-instance (Typeable a, Restartable a) => RestartableConstructor (Identity a)
-instance (Typeable a, Restartable a) => RestartableConstructor (IO a)
+class Constructor a => RestartableConstructor a where
+  accept :: a -> [(TypeRepString,B.ByteString)] -> IO ()
+
+instance (Typeable a, Restartable a) => RestartableConstructor (Identity a) where
+  accept (Identity x) bs =
+    case lookup (show $ typeRep (Identity x)) bs of
+      Nothing -> return ()
+      Just b -> resume x b
+
+instance (Typeable a, Restartable a) => RestartableConstructor (IO a) where
+  accept m bs =
+    case lookup (show $ typeRep m) bs of
+      Nothing -> return ()
+      Just b -> resume
+
 instance (Typeable b, RestartableConstructor a) => RestartableConstructor (b -> a)
 
-data RestartableBinding
+data RestartableBinding = RestartableBinding {
+  rbBinding :: Binding,
+  rbResume :: [(TypeRepString,B.ByteString)] -> IO ()
+  }
 
 restartable :: (RestartableConstructor a) => a -> RestartableBinding
-restartable = undefined
+restartable x = RestartableBinding (constructor x) (accept x) where
 
 type TypeRepString = String
 
