@@ -20,14 +20,9 @@ import Data.Functor.Identity
 import Data.List hiding (insert, lookup)
 import Data.Map hiding (foldl)
 
-data Binding
-  = Instance Dynamic
-  -- | forall a. Typeable a => Requires (a -> Binding) -- can try this later
-  | Requires [TypeRep] TypeRep ([Dynamic] -> IO Dynamic)
-  -- | Creates Dynamic -- to be changed to (IO Dynamic) later?
+data Binding = Requires [TypeRep] TypeRep ([Dynamic] -> IO Dynamic)
 
 instance Show Binding where
-  show (Instance d) = "Instance " ++ show d
   show (Requires trs tr _) = "Requires [" ++ intercalate "," (fmap show trs) ++ "] " ++ show tr
 
 data BindingError
@@ -36,10 +31,7 @@ data BindingError
   deriving (Eq, Show)
 
 key :: Binding -> TypeRep
-key b =
-  case b of
-    Instance d -> dynTypeRep d
-    Requires _ t _ -> t
+key (Requires _ t _) = t
 
 mkMap :: [Binding] -> TypeRep -> [Binding]
 mkMap = foldl (\mp b tr -> (if key b == tr then [b] else []) ++ mp tr) (const []) where
@@ -57,9 +49,6 @@ create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
           xx@(_:_:_) -> do
             liftIO $ print xx
             throwError (DuplicateBinding tr (show xx))
-          [Instance d] -> do
-            modify (insert tr d)
-            return d
           [Requires deps _ builder] -> do
             dyns <- mapM m deps
             result <- liftIO $ builder dyns
@@ -67,7 +56,7 @@ create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
             return result
 
 constructed :: (Typeable a) => a -> Binding
-constructed = Instance . toDyn
+constructed = constructor . Identity
 
 class Constructor c where
   inputs :: c -> [TypeRep]
