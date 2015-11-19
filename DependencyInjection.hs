@@ -5,6 +5,7 @@ module DependencyInjection where
 import Prelude hiding (lookup)
 
 import Control.Applicative hiding (empty)
+import Control.Monad.Except
 import Control.Monad.State
 import Data.Dynamic
 import Data.Functor.Identity
@@ -41,20 +42,24 @@ dependencies b =
 mkMap :: [Binding] -> TypeRep -> [Binding]
 mkMap = foldl (\mp b tr -> (if key b == tr then [b] else []) ++ mp tr) (const []) where
 
-create :: (TypeRep -> [Binding]) -> TypeRep -> Dynamic
-create allBindings = flip evalState empty . m where
+create :: (TypeRep -> [Binding]) -> TypeRep -> Either BindingError Dynamic
+create allBindings = fst . flip runState empty . runExceptT . m where
   m tr = do
     mbDyn <- gets (lookup tr)
     case mbDyn of
       Just d -> return d
       Nothing -> do
         case allBindings tr of
-          [] -> error $ "no bindings for: " ++ show tr
-          (_:_:_) -> error $ "multiple bindings for: " ++ show tr
-          [Instance d] -> return d
+          [] -> throwError (UnsatisfiedDependency tr [] {- todo -})
+          (_:_:_) -> throwError (DuplicateBinding tr)
+          [Instance d] -> do
+            modify (insert tr d)
+            return d
           [Requires deps _ builder] -> do
             dyns <- mapM m deps
-            return $ builder dyns
+            let result = builder dyns
+            modify (insert tr result)
+            return result
 
 {-
 create :: (TypeRep -> [Binding]) -> Map TypeRep Dynamic -> TypeRep -> Dynamic
