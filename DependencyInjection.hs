@@ -2,19 +2,23 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module DependencyInjection where
+module DependencyInjection (
+  Binding(),
+  Constructor,
+  constructor,
+  constructed,
+  instantiate
+) where
 
 import Prelude hiding (lookup)
 
 import Control.Applicative hiding (empty)
-import Control.Exception
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Dynamic
 import Data.Functor.Identity
 import Data.List hiding (insert, lookup)
 import Data.Map hiding (foldl)
-import Data.Maybe
 
 data Binding
   = Instance Dynamic
@@ -31,22 +35,11 @@ data BindingError
   | UnsatisfiedDependency TypeRep -- todo: [TypeRep] -- list is chain back to the instantiation request, with the last item being the instantiation request, or an empty list if there is no binding for the requested instantiation
   deriving (Eq, Show)
 
-analyze :: Binding -> [Binding] -> ([TypeRep] {- dups -}, [[TypeRep]] {- unsatisfiable chains -},
-  Map TypeRep Binding) -- map is undefined if either of first two lists are non-empty
-analyze _ = undefined -- rec empty where
-  -- rec context dups bindings
-
 key :: Binding -> TypeRep
 key b =
   case b of
     Instance d -> dynTypeRep d
     Requires _ t _ -> t
-
-dependencies :: Binding -> [TypeRep]
-dependencies b =
-  case b of
-    Instance _ -> []
-    Requires ts _ _ -> ts
 
 mkMap :: [Binding] -> TypeRep -> [Binding]
 mkMap = foldl (\mp b tr -> (if key b == tr then [b] else []) ++ mp tr) (const []) where
@@ -72,64 +65,6 @@ create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
             result <- liftIO $ builder dyns
             modify (insert tr result)
             return result
-
-{-
-create :: (TypeRep -> [Binding]) -> Map TypeRep Dynamic -> TypeRep -> Dynamic
-create allBindings discoveredBindings target =
-  case lookup target discoveredBindings of
-    Just d -> d
-    Nothing ->
-      case allBindings target of
-        [] -> error $ "no bindings for: " ++ show target
-        (_:_:_) -> error $ "multiple bindings for: " ++ show target
-        [Instance d] -> d
-        [Requires deps _ builder] -> builder (foldl (\db tr -> insert tr (create allBindings db tr) db) discoveredBindings deps)
-        -}
-
-
-
-{-
-checkCompleteness :: Binding -> (TypeRep -> [Binding]) -> [BindingError]
-checkCompleteness binding bindings = nub $ rec mempty bindings binding where
-  rec context bs b =
-    let k = key target in
-    case bs k of
-      [] ->
-        -}
-{-
-create :: (TypeRep -> [Binding]) -> Binding -> Either [BindingError] Dynamic
-create bindings binding = rec mempty (fmap (,Nothing) bindings) binding where
-  rec context bindingsFor target =
-    let k = key target in
-    case bindingsFor k of
-      [] -> Left [UnsatisfiedDependency k context]
-      (_:_:_) -> Left [DuplicateBinding k]
-      [(_,Just d)] -> Right d
-      [(b,Nothing)] ->
-        let needed = dependencies b
-            found = foldl nextDep bindingsFor needed
-            nextDep bf dep
-            find dep = rec (k:context) bindingsFor
-        case rec (k:context)
-      Nothing -> Left [UnsatisfiedDependency k context]
-      Just (_, Just d) -> Right d
-      Just ([], _) -> error "this should never happen"
-      Just ([b],
-      Just ((_:_:_), _) -> Left [DuplicatingBinding k]
-      -}
-{-
-  rec mp bb =
-    case bb of
-      [] -> empty
-      (b:bs) ->
-        let k = key b in
-        case lookup k mp of
-          Nothing -> rec (insert k b mp) bs
-          Just _ -> error $ "duplicate binding: " ++ show k
-          -}
-
-mkGraph :: [Binding] -> [(Binding, TypeRep, [TypeRep])]
-mkGraph = fmap (\b -> (b, key b, dependencies b))
 
 constructed :: (Typeable a) => a -> Binding
 constructed = Instance . toDyn
@@ -159,25 +94,15 @@ instance forall a b. (Typeable b, Constructor a) => Constructor (b -> a) where
       Nothing -> error $ "function given wrong type"
       Just y -> creator (f y) xs
 
-{-
-inputs2 :: forall a b. (Typeable b, Constructor a) => (b -> a) -> [TypeRep]
-inputs2 f = (typeRep (Proxy :: Proxy b)) : (inputs (f undefined))
--}
-
-{-
-class IOConstructor f
-
-instance (Typeable a) => IOConstructor (IO a)
-instance (Typeable b, IOConstructor a) => IOConstructor (b -> a)
-
-solve that later
--}
-
 constructor :: Constructor c => c -> Binding
 constructor c = Requires (inputs c) (output c) (creator c)
 
+{-
 factory :: Constructor c => Int -> c -> Binding
 factory = undefined
+we actually don't really need factory, since you can just do
+  \inj1 inj2 inj3 -> Identity (\spec1 spec2 -> ...)
+-}
 
 instantiate :: forall a. Typeable a => [Binding] -> IO (Either BindingError a)
 instantiate bindings = do
@@ -185,12 +110,6 @@ instantiate bindings = do
   ebd <- create allBindings (typeRep (Proxy :: Proxy a))
   let unDyn d = case fromDynamic d of { Just x -> x; Nothing -> error "wrong type came out" }
   return . fmap unDyn $ ebd
-
--- factory takes two args
---   a function signature
---   a function which has that function signature as a suffix
---   returns a binding
--- factory :: b
 
 tt :: IO ()
 tt = do
@@ -210,11 +129,3 @@ x --> y = do
   case xx == y of
     True -> return ()
     False -> ioError . userError $ show xx ++ " /= " ++ show y
-
-{-
-x /-> y = do
-  xx <- x
-  case xx == y of
-    True -> return ()
-    False -> ioError . userError $ show xx ++ " /= " ++ show y
-    -}
