@@ -27,9 +27,9 @@ instance Show Binding where
   show (Requires trs tr _) = "Requires [" ++ intercalate "," (fmap show trs) ++ "] " ++ show tr
 
 data BindingError
-  = DuplicateBinding TypeRep
+  = DuplicateBinding TypeRep String {- [Binding] -}
   | UnsatisfiedDependency TypeRep -- todo: [TypeRep] -- list is chain back to the instantiation request, with the last item being the instantiation request, or an empty list if there is no binding for the requested instantiation
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Show)
 
 analyze :: Binding -> [Binding] -> ([TypeRep] {- dups -}, [[TypeRep]] {- unsatisfiable chains -},
   Map TypeRep Binding) -- map is undefined if either of first two lists are non-empty
@@ -63,7 +63,7 @@ create allBindings b = fst <$> (flip runStateT empty . runExceptT . m $ b) where
           [] -> throwError (UnsatisfiedDependency tr)
           xx@(_:_:_) -> do
             liftIO $ print xx
-            throwError (DuplicateBinding tr)
+            throwError (DuplicateBinding tr (show xx))
           [Instance d] -> do
             modify (insert tr d)
             return d
