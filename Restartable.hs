@@ -6,38 +6,43 @@ import Data.Binary
 import qualified Data.ByteString.Lazy as B
 import Data.Functor.Identity
 import Data.Typeable
+import System.IO
 
 import DependencyInjection
 
 -- this should probably be a data type, not a class
+data Restarter = Restarter
+  { shutdown :: IO (B.ByteString, [Handle])
+  , resume :: B.ByteString -> [Handle] -> IO () }
+
 class Restartable a where
-  shutdown :: a -> IO B.ByteString
-  resume :: a -> B.ByteString -> IO ()
+  restarter :: a -> Restarter
 
 class Constructor a => RestartableConstructor a where
-  accept :: a -> [(TypeRepString,B.ByteString)] -> IO ()
-
-instance (Typeable a, Restartable a) => RestartableConstructor (Identity a) where
-  accept (Identity x) bs =
-    case lookup (show $ typeRep (Identity x)) bs of
-      Nothing -> return ()
-      Just b -> resume x b
+  -- accept :: a -> B.ByteString -> [Handle] -> IO ()
 
 instance (Typeable a, Restartable a) => RestartableConstructor (IO a) where
-  accept m bs =
+{-
+  accept m bs _ =
     case lookup (show $ typeRep m) bs of
       Nothing -> return ()
       Just b -> resume
+      -}
 
 instance (Typeable b, RestartableConstructor a) => RestartableConstructor (b -> a)
 
-data RestartableBinding = RestartableBinding {
-  rbBinding :: Binding,
-  rbResume :: [(TypeRepString,B.ByteString)] -> IO ()
-  }
+data RestartableBinding = RestartableBinding
+  { rbName :: String
+  , rbBinding :: Binding
+  , rbResume :: Injector -> B.ByteString -> [Handle] -> IO () }
 
-restartable :: (RestartableConstructor a) => a -> RestartableBinding
-restartable x = RestartableBinding (constructor x) (accept x) where
+restartable :: (RestartableConstructor a) => String -> a -> RestartableBinding
+restartable name x = RestartableBinding name (constructor x) rsm where
+  rsm inj state files = do
+    mbVal <- instantiate inj
+    case mbVal of
+      Left be -> ioError . userError $ "binding error on restart" -- todo: better error message
+      Right v -> resume (restarter x) state files
 
 type TypeRepString = String
 
