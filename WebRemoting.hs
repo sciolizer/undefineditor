@@ -1,24 +1,36 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 module WebRemoting where
+
+import Text.JSON
 
 type Port = Int
 
-data WebRemotingListener
+data Page
 
-type Javascript = String
+data Listener
 
-newWebRemotingListener :: Javascript -> IO WebRemotingListener
-newWebRemotingListener = undefined
+data Remote a
 
-data JSRemote a
+data Lifespan
 
-remote :: JSRemote a -> IO a
-remote = undefined
+reify :: Lifespan -> Remote a -> IO String
+reify = undefined
 
-eval :: JSRemote (String -> IO ())
+-- probably need some kind of constraint on a...
+eval :: Page -> Remote (String -> IO (Remote a))
 eval = undefined
 
-class JSSerializable a
+newListener :: Port -> (Page -> IO ()) -> IO ()
+newListener = undefined
 
-instance JSON a => JSSerializable a
+class Remotable a
+-- instance JSON a => Remotable a
+instance Remotable a => Remotable (IO a)
 
+toRemote :: Remotable a => a -> Remote a
+toRemote = undefined
 
+{-
+
+-}
