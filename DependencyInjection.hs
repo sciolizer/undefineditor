@@ -145,3 +145,10 @@ x --> y = do
   case xx == y of
     True -> return ()
     False -> ioError . userError $ show xx ++ " /= " ++ show y
+
+{-
+curious idea:
+  what if all application state was kept in (wrapped) TVars?
+  Then it would be easy to make lightweight threads that listen
+  for changes on those TVars, and serialize them.
+-}

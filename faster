@@ -1,0 +1,8 @@
+Fast builds lead to faster turnaround. If care isn’t taken, projects can quickly devolve to become unmanageably slow to compile, usually the problem is avoidable with some care. Deriving instances of Read/Show/Data/Generic for largely recursive ADTs can sometimes lead to quadratic memory behavior when the nesting gets deep. The somewhat ugly hack to speed up compile time here is to run ghc -ddump-deriv Module.hs and then manually insert the resulting code instead of deriving it everytime. Not a
+great solution, but I’ve seen it drastically improve compilation footprint and time. Also be tactical with uses of INLINE and SPECIALIZE as inlining at many call sites has a non-trivial cost. Avoid TemplateHaskell as it can cause ridiculously inflated build times and enormous memory footprints in GHCi.
+
+I’ts pretty common to use ghci and ghcid to during development stage. Your mileage may also vary with ghc-mod support for Vim and Emacs which allows in-editor type introspection.
+
+Pulling from cabal to provision our test server can take minutes to hours depending on the size of our dependency tree. Fortunately it’s easy to set up a Hackage server mirror that contains all of our internal dependencies that can be served quickly from our local servers or an S3 bucket. We can then simply alter our ~/.cabal/config to change the remote-repo to our custom mirror.
+
+^ The trick on ddump-deriv is pretty interesting. Taken from http://www.stephendiehl.com/posts/production.html
